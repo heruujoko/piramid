@@ -13,7 +13,7 @@
 ## Progress
 
 - [x] Foundation — Tasks 1–4 complete and verified on `codex/foundations`
-- [ ] Execution core — Tasks 5–10
+- [x] Execution core — Tasks 5–10
 - [ ] Operator surfaces — Tasks 11–15
 - [ ] Release — Task 16
 
