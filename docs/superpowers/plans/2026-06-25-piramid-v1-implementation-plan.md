@@ -14,7 +14,7 @@
 
 - [x] Foundation — Tasks 1–4 complete and verified on `codex/foundations`
 - [x] Execution core — Tasks 5–10
-- [ ] Operator surfaces — Tasks 11–15
+- [x] Operator surfaces — Tasks 11–15
 - [ ] Release — Task 16
 
 Last verified foundation checks:
