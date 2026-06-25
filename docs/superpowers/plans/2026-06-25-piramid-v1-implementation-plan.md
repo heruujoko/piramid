@@ -634,7 +634,7 @@ git commit -m "feat: persist orchestration state in sqlite"
 - Create: `internal/prompt/render.go`
 - Create: `internal/prompt/render_test.go`
 
-- [ ] **Step 1: Write atomic-record tests**
+- [x] **Step 1: Write atomic-record tests**
 
 Assert that:
 
@@ -644,7 +644,7 @@ Assert that:
 - SHA-256 and byte size match persisted content;
 - paths cannot escape the Pi-Ramid home.
 
-- [ ] **Step 2: Write prompt rendering tests**
+- [x] **Step 2: Write prompt rendering tests**
 
 Use fixed prompt files and assert exact order:
 
@@ -664,7 +664,7 @@ The retry section must be absent on attempt one. Empty policy files must not
 produce leading blank sections. Repeated rendering must produce identical
 bytes and hashes.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run:
 
@@ -674,7 +674,7 @@ go test ./internal/records ./internal/prompt
 
 Expected: compilation fails because record and renderer APIs are missing.
 
-- [ ] **Step 4: Implement atomic records**
+- [x] **Step 4: Implement atomic records**
 
 Expose role-specific methods:
 
@@ -688,7 +688,7 @@ WriteVerification(paths AttemptPaths, v domain.Verification) (FileRecord, error)
 
 Canonical YAML uses two-space indentation and stable struct field order.
 
-- [ ] **Step 5: Implement deterministic prompt rendering**
+- [x] **Step 5: Implement deterministic prompt rendering**
 
 Expose:
 
@@ -712,7 +712,7 @@ type RenderInput struct {
 func Render(input RenderInput) (content []byte, sha256Hex string)
 ```
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
