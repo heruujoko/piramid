@@ -123,6 +123,30 @@ func (s *Store) PrepareAttempt(ctx context.Context, input storepkg.AttemptPathsI
 	return nil
 }
 
+func (s *Store) PrepareVerifier(
+	ctx context.Context,
+	attemptID int64,
+	stdoutPath string,
+	stderrPath string,
+) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE attempts
+		SET verifier_stdout_path = ?, verifier_stderr_path = ?
+		WHERE id = ? AND status = ?
+	`, stdoutPath, stderrPath, attemptID, domain.AttemptVerifying)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) RecordArtifacts(
 	ctx context.Context,
 	attemptID int64,

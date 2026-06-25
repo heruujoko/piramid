@@ -1256,7 +1256,7 @@ git commit -m "feat: expose orchestration http api"
 - Create: `internal/daemon/daemon_test.go`
 - Modify: `internal/cli/root.go`
 
-- [ ] **Step 1: Write startup tests**
+- [x] **Step 1: Write startup tests**
 
 Assert:
 
@@ -1270,7 +1270,7 @@ Assert:
 - duplicate listener startup fails clearly;
 - SIGINT and SIGTERM stop dispatch and close cleanly.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1280,7 +1280,7 @@ go test ./internal/cli ./internal/daemon
 
 Expected: compilation fails because start and daemon facilities are missing.
 
-- [ ] **Step 3: Implement application bootstrap**
+- [x] **Step 3: Implement application bootstrap**
 
 Bootstrap order:
 
@@ -1299,13 +1299,13 @@ start API and scheduler
 Return a cleanup function that stops dispatch, waits for workers, closes HTTP,
 and closes SQLite.
 
-- [ ] **Step 4: Implement daemon re-exec**
+- [x] **Step 4: Implement daemon re-exec**
 
 Use `os.Executable` and `os.StartProcess`; do not invoke a shell. Redirect
 daemon stdout/stderr to files under `~/.piramid/runtime/`. Parent waits for a
 bounded readiness handshake before reporting success.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 

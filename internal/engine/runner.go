@@ -24,6 +24,7 @@ import (
 
 type RunnerStore interface {
 	PrepareAttempt(context.Context, storepkg.AttemptPathsInput) error
+	PrepareVerifier(context.Context, int64, string, string) error
 	RecordArtifacts(context.Context, int64, []storepkg.ArtifactRecord) error
 	MoveToVerification(context.Context, storepkg.FinishExecutionInput) error
 	FinishVerification(context.Context, storepkg.FinishVerificationInput) error
@@ -183,6 +184,11 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 	}
 	if _, err := r.records.WriteImmutable(paths.VerifierPrompt, verifierPrompt); err != nil {
 		return r.operationalFailure(ctx, task, attempt, "verifier_prompt", err)
+	}
+	if err := r.store.PrepareVerifier(
+		ctx, attempt.ID, paths.VerifierStdout, paths.VerifierStderr,
+	); err != nil {
+		return r.operationalFailure(ctx, task, attempt, "verifier_prepare", err)
 	}
 	verifierResult, err := r.invoke(
 		ctx, r.verifier, r.verifierRuntime, task, attempt,

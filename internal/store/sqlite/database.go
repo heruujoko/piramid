@@ -49,3 +49,7 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error {
 	return s.db.Close()
 }
+
+func (s *Store) Health(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}

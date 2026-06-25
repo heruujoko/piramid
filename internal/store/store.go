@@ -9,6 +9,7 @@ import (
 )
 
 var ErrProjectLeased = errors.New("project workspace is leased")
+var ErrInvalidState = errors.New("invalid lifecycle state")
 
 type PersistedPaths struct {
 	GoalPath   string
@@ -88,7 +89,15 @@ type Event struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type AttemptLogPaths struct {
+	Stdout         string
+	Stderr         string
+	VerifierStdout string
+	VerifierStderr string
+}
+
 type Store interface {
+	Health(context.Context) error
 	SaveGoalDraft(context.Context, domain.Goal, PersistedPaths) error
 	UpdateGoalStatus(context.Context, string, domain.GoalStatus, time.Time) error
 	AdmitPlan(context.Context, domain.Goal, domain.Plan, PersistedPaths) error
@@ -98,6 +107,7 @@ type Store interface {
 	ReleaseReadLease(context.Context, string, string) error
 	StartAttempt(context.Context, StartAttemptInput) (domain.Attempt, error)
 	PrepareAttempt(context.Context, AttemptPathsInput) error
+	PrepareVerifier(context.Context, int64, string, string) error
 	RecordArtifacts(context.Context, int64, []ArtifactRecord) error
 	MoveToVerification(context.Context, FinishExecutionInput) error
 	FinishVerification(context.Context, FinishVerificationInput) error
@@ -106,4 +116,8 @@ type Store interface {
 	RecoverActive(context.Context, time.Time) ([]InterruptedAttempt, error)
 	GetTask(context.Context, string) (domain.TaskView, error)
 	ListTasks(context.Context, TaskFilter) ([]domain.TaskView, error)
+	RetryTask(context.Context, string, bool, time.Time) error
+	CancelTask(context.Context, string, time.Time) error
+	GetAttemptLogPaths(context.Context, int64) (AttemptLogPaths, error)
+	ListEvents(context.Context, int64, int) ([]Event, error)
 }
