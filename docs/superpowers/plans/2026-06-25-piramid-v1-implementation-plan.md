@@ -10,6 +10,21 @@
 
 ---
 
+## Progress
+
+- [x] Foundation — Tasks 1–4 complete and verified on `codex/foundations`
+- [ ] Execution core — Tasks 5–10
+- [ ] Operator surfaces — Tasks 11–15
+- [ ] Release — Task 16
+
+Last verified foundation checks:
+
+```text
+go test ./... -race
+go vet ./...
+CGO_ENABLED=0 go build -trimpath -o bin/piramid ./cmd/piramid
+```
+
 ## Delivery sequence
 
 ```text
@@ -87,7 +102,7 @@ docs/                               operator and task-contract documentation
 - Create: `.gitignore`
 - Create: `Makefile`
 
-- [ ] **Step 1: Write the root command test**
+- [x] **Step 1: Write the root command test**
 
 ```go
 package cli
@@ -113,7 +128,7 @@ func TestRootCommandShowsProductName(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Initialize dependencies and verify the test fails**
+- [x] **Step 2: Initialize dependencies and verify the test fails**
 
 Run:
 
@@ -125,7 +140,7 @@ go test ./internal/cli
 
 Expected: compilation fails because `NewRootCommand` does not exist.
 
-- [ ] **Step 3: Implement the root command and executable**
+- [x] **Step 3: Implement the root command and executable**
 
 `internal/cli/root.go`:
 
@@ -165,7 +180,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 4: Add standard build commands**
+- [x] **Step 4: Add standard build commands**
 
 `Makefile` must expose:
 
@@ -192,7 +207,7 @@ vet:
 *.db-wal
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -225,7 +240,7 @@ git commit -m "chore: bootstrap piramid command"
 - Create: `internal/domain/validate.go`
 - Create: `internal/domain/validate_test.go`
 
-- [ ] **Step 1: Write table-driven validation tests**
+- [x] **Step 1: Write table-driven validation tests**
 
 Cover these exact cases:
 
@@ -259,7 +274,7 @@ func validPlan() domain.Plan {
 }
 ```
 
-- [ ] **Step 2: Run the tests and confirm missing domain types fail compilation**
+- [x] **Step 2: Run the tests and confirm missing domain types fail compilation**
 
 Run:
 
@@ -270,7 +285,7 @@ go test ./internal/domain
 Expected: compilation fails because `Plan`, `Task`, and `ValidatePlan` are
 undefined.
 
-- [ ] **Step 3: Implement the contracts**
+- [x] **Step 3: Implement the contracts**
 
 Define:
 
@@ -358,7 +373,7 @@ type TaskView struct {
 Implement `CanTransition(from, to TaskStatus) bool` from the state diagram in
 the design specification. Reject every transition not explicitly listed.
 
-- [ ] **Step 4: Implement graph validation**
+- [x] **Step 4: Implement graph validation**
 
 `ValidatePlan` must:
 
@@ -370,7 +385,7 @@ the design specification. Reject every transition not explicitly listed.
 6. detect cycles with a three-color depth-first traversal;
 7. return errors containing the task ID and violated field.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -401,7 +416,7 @@ git commit -m "feat: define task and lifecycle contracts"
 - Create: `internal/config/config_test.go`
 - Create: `internal/cli/init.go`
 
-- [ ] **Step 1: Write home-resolution and initialization tests**
+- [x] **Step 1: Write home-resolution and initialization tests**
 
 Tests must assert:
 
@@ -413,7 +428,7 @@ Tests must assert:
 - repeated initialization is idempotent;
 - an existing config is not overwritten.
 
-- [ ] **Step 2: Write config default and validation tests**
+- [x] **Step 2: Write config default and validation tests**
 
 Expected defaults:
 
@@ -429,7 +444,7 @@ Validation must reject an empty host, a port outside `1..65535`, a worker count
 below one, unknown adapter names, empty commands, and runtime arguments with
 unknown placeholders.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run:
 
@@ -439,7 +454,7 @@ go test ./internal/home ./internal/config
 
 Expected: compilation fails because home and config functions are undefined.
 
-- [ ] **Step 4: Implement home paths and idempotent initialization**
+- [x] **Step 4: Implement home paths and idempotent initialization**
 
 Expose:
 
@@ -463,18 +478,18 @@ func Init(paths Paths) error
 Create directories with `0700`, regular files with `0600`, and config with
 safe defaults. Do not replace existing files.
 
-- [ ] **Step 5: Implement typed YAML configuration**
+- [x] **Step 5: Implement typed YAML configuration**
 
 Use `yaml.Decoder.KnownFields(true)` so misspelled fields fail. Define separate
 planner, executor, and verifier runtime configurations. Validate the
 allow-listed placeholders during load.
 
-- [ ] **Step 6: Add `piramid init`**
+- [x] **Step 6: Add `piramid init`**
 
 The command calls `home.Resolve`, `home.Init`, and prints the resolved root.
 It performs no network or Pi invocation.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
 Run:
 
@@ -508,7 +523,7 @@ git commit -m "feat: initialize machine-wide piramid home"
 - Create: `internal/store/sqlite/events.go`
 - Create: `internal/store/sqlite/store_test.go`
 
-- [ ] **Step 1: Add the embedded SQLite dependency**
+- [x] **Step 1: Add the embedded SQLite dependency**
 
 Run:
 
@@ -516,7 +531,7 @@ Run:
 go get modernc.org/sqlite
 ```
 
-- [ ] **Step 2: Write repository integration tests**
+- [x] **Step 2: Write repository integration tests**
 
 Use a temporary database and assert:
 
@@ -528,7 +543,7 @@ Use a temporary database and assert:
 - task transition and event insertion occur in one transaction;
 - reopening preserves all records.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run:
 
@@ -538,7 +553,7 @@ go test ./internal/store/sqlite
 
 Expected: compilation fails because `Open` and repository methods are missing.
 
-- [ ] **Step 4: Create the initial schema**
+- [x] **Step 4: Create the initial schema**
 
 `001_initial.sql` must create:
 
@@ -567,7 +582,7 @@ Lease transactions enforce these rules:
 - a `READ` lease cannot start while a `WRITE` lease exists;
 - executor-to-verifier transition retains the same `WRITE` lease.
 
-- [ ] **Step 5: Implement transaction-focused interfaces**
+- [x] **Step 5: Implement transaction-focused interfaces**
 
 Expose narrow methods rather than generic SQL access:
 
@@ -590,7 +605,7 @@ type Store interface {
 Each lifecycle method must update state, append an event, and manage leases in
 one database transaction.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
@@ -1659,7 +1674,7 @@ git commit -m "test: verify piramid v1 end to end"
 
 ## Final acceptance checklist
 
-- [ ] `piramid init` creates safe machine-wide state and empty prompt files.
+- [x] `piramid init` creates safe machine-wide state and empty prompt files.
 - [ ] `piramid doctor` is demonstrably read-only.
 - [ ] Foreground and daemon modes run the same engine.
 - [ ] CLI and TUI communicate only through the TCP API.
