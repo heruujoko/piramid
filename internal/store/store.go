@@ -28,6 +28,21 @@ type StartAttemptInput struct {
 	StartedAt  time.Time
 }
 
+type AttemptPathsInput struct {
+	AttemptID  int64
+	PromptPath string
+	PromptHash string
+	StdoutPath string
+	StderrPath string
+}
+
+type ArtifactRecord struct {
+	RelativePath string
+	AbsolutePath string
+	SHA256       string
+	SizeBytes    int64
+}
+
 type FinishExecutionInput struct {
 	TaskID     string
 	AttemptID  int64
@@ -73,6 +88,8 @@ type Store interface {
 	AcquireReadLease(context.Context, string, string) error
 	ReleaseReadLease(context.Context, string, string) error
 	StartAttempt(context.Context, StartAttemptInput) (domain.Attempt, error)
+	PrepareAttempt(context.Context, AttemptPathsInput) error
+	RecordArtifacts(context.Context, int64, []ArtifactRecord) error
 	MoveToVerification(context.Context, FinishExecutionInput) error
 	FinishVerification(context.Context, FinishVerificationInput) error
 	RecordOperationalFailure(context.Context, OperationalFailureInput) error

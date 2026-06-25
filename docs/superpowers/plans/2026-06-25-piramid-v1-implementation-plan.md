@@ -1013,7 +1013,7 @@ git commit -m "feat: schedule dependency-aware project work"
 - Modify: `internal/store/store.go`
 - Modify: `internal/store/sqlite/attempts.go`
 
-- [ ] **Step 1: Write lifecycle tests**
+- [x] **Step 1: Write lifecycle tests**
 
 Cover:
 
@@ -1031,7 +1031,7 @@ Cover:
 - attempt limit produces terminal failure;
 - previous attempts and files remain unchanged.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1041,13 +1041,13 @@ go test ./internal/engine -run Runner
 
 Expected: compilation fails because runner and verifier parsers are missing.
 
-- [ ] **Step 3: Implement verifier parsing**
+- [x] **Step 3: Implement verifier parsing**
 
 Use strict YAML decoding with known fields. Accept only uppercase `PASS` and
 `FAIL`. Require at least one reason. Require non-empty `retry_prompt` for
 `FAIL` when another attempt is allowed. Reject trailing documents.
 
-- [ ] **Step 4: Implement the attempt runner**
+- [x] **Step 4: Implement the attempt runner**
 
 The exact sequence is:
 
@@ -1069,7 +1069,7 @@ Artifact path resolution rejects symlink or path traversal escapes from the
 canonical project directory. Missing outputs remain verifier evidence rather
 than causing Pi-Ramid to make the quality decision itself.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 

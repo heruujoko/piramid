@@ -223,6 +223,39 @@ func TestStartAttemptIsUniqueAndRecordsTransitionEvent(t *testing.T) {
 	}
 }
 
+func TestRecordArtifactsLinksMetadataToAttempt(t *testing.T) {
+	st := openTestStore(t)
+	goal, plan := testGoalPlan()
+	plan.Tasks = plan.Tasks[:1]
+	if err := st.AdmitPlan(context.Background(), goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := st.StartAttempt(context.Background(), storepkg.StartAttemptInput{
+		TaskID: "TASK-1", WorkerID: "worker-1", Runtime: "pi-cli", StartedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordArtifacts(context.Background(), attempt.ID, []storepkg.ArtifactRecord{{
+		RelativePath: "result.txt",
+		AbsolutePath: "/tmp/project/result.txt",
+		SHA256:       "abc123",
+		SizeBytes:    12,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	var relativePath, hash string
+	var size int64
+	if err := st.db.QueryRow(`
+		SELECT relative_path, sha256, size_bytes FROM artifacts WHERE attempt_id = ?
+	`, attempt.ID).Scan(&relativePath, &hash, &size); err != nil {
+		t.Fatal(err)
+	}
+	if relativePath != "result.txt" || hash != "abc123" || size != 12 {
+		t.Fatalf("artifact = %q %q %d", relativePath, hash, size)
+	}
+}
+
 func TestFailedVerificationBecomesRunnableAtRetryTime(t *testing.T) {
 	st := openTestStore(t)
 	goal, plan := testGoalPlan()

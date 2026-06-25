@@ -103,6 +103,49 @@ func (s *Store) StartAttempt(
 	}, nil
 }
 
+func (s *Store) PrepareAttempt(ctx context.Context, input storepkg.AttemptPathsInput) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE attempts
+		SET prompt_path = ?, prompt_hash = ?, stdout_path = ?, stderr_path = ?
+		WHERE id = ? AND status = ?
+	`, input.PromptPath, input.PromptHash, input.StdoutPath, input.StderrPath,
+		input.AttemptID, domain.AttemptRunning)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) RecordArtifacts(
+	ctx context.Context,
+	attemptID int64,
+	artifacts []storepkg.ArtifactRecord,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, artifact := range artifacts {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO artifacts(
+				attempt_id, relative_path, absolute_path, sha256, size_bytes
+			) VALUES (?, ?, ?, ?, ?)
+		`, attemptID, artifact.RelativePath, artifact.AbsolutePath,
+			artifact.SHA256, artifact.SizeBytes); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) MoveToVerification(ctx context.Context, input storepkg.FinishExecutionInput) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -146,15 +189,25 @@ func (s *Store) FinishVerification(ctx context.Context, input storepkg.FinishVer
 		reason, input.Verification.RetryPrompt); err != nil {
 		return err
 	}
+	var attemptCount, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&attemptCount, &maxAttempts); err != nil {
+		return err
+	}
 	taskStatus := domain.TaskCompleted
 	attemptStatus := domain.AttemptCompleted
 	var nextRun any
 	eventType := "TASK_COMPLETED"
 	if input.Verification.Status == domain.VerificationFail {
-		taskStatus = domain.TaskRetryWait
+		taskStatus = domain.TaskFailed
 		attemptStatus = domain.AttemptFailed
-		nextRun = formatTime(input.NextRunAt)
-		eventType = "TASK_RETRY_SCHEDULED"
+		eventType = "TASK_FAILED"
+		if attemptCount < maxAttempts {
+			taskStatus = domain.TaskRetryWait
+			nextRun = formatTime(input.NextRunAt)
+			eventType = "TASK_RETRY_SCHEDULED"
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE attempts SET status = ?, finished_at = ? WHERE id = ? AND task_id = ?
@@ -188,14 +241,28 @@ func (s *Store) RecordOperationalFailure(
 		return err
 	}
 	defer tx.Rollback()
+	var attemptCount, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&attemptCount, &maxAttempts); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE attempts SET status = ?, failure_class = ?, finished_at = ? WHERE id = ?
 	`, domain.AttemptFailed, input.FailureClass, formatTime(input.FinishedAt), input.AttemptID); err != nil {
 		return err
 	}
+	taskStatus := domain.TaskFailed
+	var nextRun any
+	eventType := "TASK_FAILED"
+	if attemptCount < maxAttempts {
+		taskStatus = domain.TaskRetryWait
+		nextRun = formatTime(input.NextRunAt)
+		eventType = "OPERATIONAL_FAILURE"
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE tasks SET status = ?, next_run_at = ?, updated_at = ? WHERE id = ?
-	`, domain.TaskRetryWait, formatTime(input.NextRunAt), formatTime(input.FinishedAt), input.TaskID); err != nil {
+	`, taskStatus, nextRun, formatTime(input.FinishedAt), input.TaskID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -203,7 +270,7 @@ func (s *Store) RecordOperationalFailure(
 	`, fmt.Sprint(input.AttemptID)); err != nil {
 		return err
 	}
-	if err := appendEvent(ctx, tx, "task", input.TaskID, "OPERATIONAL_FAILURE",
+	if err := appendEvent(ctx, tx, "task", input.TaskID, eventType,
 		map[string]any{"attempt_id": input.AttemptID, "class": input.FailureClass}, input.FinishedAt); err != nil {
 		return err
 	}

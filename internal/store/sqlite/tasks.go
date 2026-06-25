@@ -14,14 +14,26 @@ import (
 
 func (s *Store) GetTask(ctx context.Context, id string) (domain.TaskView, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT task_json, status, attempt_count, COALESCE(next_run_at, ''), created_at, updated_at
+		SELECT task_json, status, attempt_count,
+		       COALESCE((
+		           SELECT v.retry_prompt
+		           FROM verifications v
+		           JOIN attempts a ON a.id = v.attempt_id
+		           WHERE a.task_id = tasks.id
+		           ORDER BY a.attempt_number DESC
+		           LIMIT 1
+		       ), ''),
+		       COALESCE(next_run_at, ''), created_at, updated_at
 		FROM tasks WHERE id = ?
 	`, id)
 	var (
-		taskJSON, status, nextRunAt, createdAt, updatedAt string
-		attemptCount                                      int
+		taskJSON, status, retryPrompt, nextRunAt, createdAt, updatedAt string
+		attemptCount                                                   int
 	)
-	if err := row.Scan(&taskJSON, &status, &attemptCount, &nextRunAt, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(
+		&taskJSON, &status, &attemptCount, &retryPrompt,
+		&nextRunAt, &createdAt, &updatedAt,
+	); err != nil {
 		return domain.TaskView{}, err
 	}
 	var task domain.Task
@@ -36,6 +48,7 @@ func (s *Store) GetTask(ctx context.Context, id string) (domain.TaskView, error)
 			Task:         task,
 			Status:       domain.TaskStatus(status),
 			AttemptCount: attemptCount,
+			RetryPrompt:  retryPrompt,
 			NextRunAt:    parseTime(nextRunAt),
 			CreatedAt:    parseTime(createdAt),
 			UpdatedAt:    parseTime(updatedAt),
@@ -132,7 +145,16 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT task_json, status, attempt_count, COALESCE(next_run_at, ''), created_at, updated_at
+		SELECT task_json, status, attempt_count,
+		       COALESCE((
+		           SELECT v.retry_prompt
+		           FROM verifications v
+		           JOIN attempts a ON a.id = v.attempt_id
+		           WHERE a.task_id = t.id
+		           ORDER BY a.attempt_number DESC
+		           LIMIT 1
+		       ), ''),
+		       COALESCE(next_run_at, ''), created_at, updated_at
 		FROM tasks t
 		WHERE t.status IN (?, ?)
 		  AND (t.next_run_at IS NULL OR t.next_run_at <= ?)
@@ -155,9 +177,10 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 	var records []domain.TaskRecord
 	for rows.Next() {
 		var record domain.TaskRecord
-		var taskJSON, status, nextRunAt, createdAt, updatedAt string
+		var taskJSON, status, retryPrompt, nextRunAt, createdAt, updatedAt string
 		if err := rows.Scan(
-			&taskJSON, &status, &record.AttemptCount, &nextRunAt, &createdAt, &updatedAt,
+			&taskJSON, &status, &record.AttemptCount, &retryPrompt,
+			&nextRunAt, &createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -168,6 +191,7 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 			return nil, err
 		}
 		record.Status = domain.TaskStatus(status)
+		record.RetryPrompt = retryPrompt
 		record.NextRunAt = parseTime(nextRunAt)
 		record.CreatedAt = parseTime(createdAt)
 		record.UpdatedAt = parseTime(updatedAt)

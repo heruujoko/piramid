@@ -32,6 +32,7 @@ type TaskRecord struct {
 	Task
 	Status       TaskStatus `yaml:"status" json:"status"`
 	AttemptCount int        `yaml:"attempt_count" json:"attempt_count"`
+	RetryPrompt  string     `yaml:"retry_prompt,omitempty" json:"retry_prompt,omitempty"`
 	NextRunAt    time.Time  `yaml:"next_run_at" json:"next_run_at"`
 	CreatedAt    time.Time  `yaml:"created_at" json:"created_at"`
 	UpdatedAt    time.Time  `yaml:"updated_at" json:"updated_at"`
