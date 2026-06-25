@@ -1411,7 +1411,7 @@ git commit -m "feat: add goal and task cli workflows"
 - Create: `internal/cli/doctor.go`
 - Modify: `internal/cli/root.go`
 
-- [ ] **Step 1: Write doctor tests**
+- [x] **Step 1: Write doctor tests**
 
 Assert:
 
@@ -1425,7 +1425,7 @@ Assert:
 - non-loopback address without authentication is warned;
 - no checked file changes content or modification time.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1435,7 +1435,7 @@ go test ./internal/doctor
 
 Expected: compilation fails because doctor APIs are missing.
 
-- [ ] **Step 3: Implement composable checks**
+- [x] **Step 3: Implement composable checks**
 
 ```go
 type Status string
@@ -1462,13 +1462,13 @@ Checks inspect OS/architecture, home permissions, config, embedded SQLite,
 schema compatibility, TCP reachability, Node.js, Pi, runtime templates,
 policy files, and optional project Git/GitHub tooling.
 
-- [ ] **Step 4: Add the command**
+- [x] **Step 4: Add the command**
 
 `piramid doctor` runs checks concurrently where they have no ordering
 dependency, prints deterministic grouped output, and exits non-zero when any
 check fails.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 

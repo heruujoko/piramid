@@ -19,5 +19,6 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newInspectCommand())
 	cmd.AddCommand(newRetryCommand())
 	cmd.AddCommand(newCancelCommand())
+	cmd.AddCommand(newDoctorCommand())
 	return cmd
 }
