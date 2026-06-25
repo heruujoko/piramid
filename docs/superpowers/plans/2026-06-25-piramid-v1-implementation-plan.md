@@ -742,7 +742,7 @@ git commit -m "feat: persist records and render prompts"
 - Create: `internal/runtime/command_test.go`
 - Create: `internal/testutil/helperprocess.go`
 
-- [ ] **Step 1: Write template expansion tests**
+- [x] **Step 1: Write template expansion tests**
 
 Assert:
 
@@ -752,7 +752,7 @@ Assert:
 - prompt content may be supplied directly or by prompt file;
 - no shell is involved.
 
-- [ ] **Step 2: Write subprocess tests**
+- [x] **Step 2: Write subprocess tests**
 
 The deterministic helper process must:
 
@@ -766,7 +766,7 @@ Tests must assert streaming to separate files, exit code capture, timeout,
 context cancellation, process-group termination, and secret-value redaction
 from recorded metadata.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run:
 
@@ -776,7 +776,7 @@ go test ./internal/runtime
 
 Expected: compilation fails because adapter APIs are missing.
 
-- [ ] **Step 4: Define the runtime contract**
+- [x] **Step 4: Define the runtime contract**
 
 ```go
 type Invocation struct {
@@ -803,14 +803,14 @@ type Adapter interface {
 }
 ```
 
-- [ ] **Step 5: Implement `pi-cli` and generic command adapters**
+- [x] **Step 5: Implement `pi-cli` and generic command adapters**
 
 Both adapters use `exec.CommandContext` directly. Set `cmd.Dir` to the
 canonical task project path. Create stdout/stderr files before launch and sync
 them before returning. On cancellation, terminate the process group, wait a
 bounded grace period, then force termination.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
