@@ -76,6 +76,13 @@ func TestValidatePlanRejectsInvalidTasks(t *testing.T) {
 			contains: "TASK-1 depends_on",
 		},
 		{
+			name: "unknown parent",
+			mutate: func(plan *Plan) {
+				plan.Tasks[0].ParentTaskID = "TASK-404"
+			},
+			contains: "TASK-1 parent_task_id",
+		},
+		{
 			name: "duplicate task id",
 			mutate: func(plan *Plan) {
 				plan.Tasks = append(plan.Tasks, plan.Tasks[0])

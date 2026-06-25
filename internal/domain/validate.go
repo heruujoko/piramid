@@ -34,6 +34,14 @@ func ValidatePlan(plan *Plan) error {
 	}
 
 	for _, task := range plan.Tasks {
+		if task.ParentTaskID != "" {
+			if task.ParentTaskID == task.ID {
+				return fmt.Errorf("task %s parent_task_id: cannot reference itself", task.ID)
+			}
+			if _, exists := tasks[task.ParentTaskID]; !exists {
+				return fmt.Errorf("task %s parent_task_id: unknown task %s", task.ID, task.ParentTaskID)
+			}
+		}
 		for _, dependency := range task.DependsOn {
 			if _, exists := tasks[dependency]; !exists {
 				return fmt.Errorf("task %s depends_on: unknown task %s", task.ID, dependency)
@@ -45,6 +53,10 @@ func ValidatePlan(plan *Plan) error {
 		return err
 	}
 	return nil
+}
+
+func NormalizeTask(task *Task) error {
+	return validateTask(task)
 }
 
 func validateTask(task *Task) error {
