@@ -15,7 +15,7 @@
 - [x] Foundation — Tasks 1–4 complete and verified on `codex/foundations`
 - [x] Execution core — Tasks 5–10
 - [x] Operator surfaces — Tasks 11–15
-- [ ] Release — Task 16
+- [x] Release — Task 16
 
 Last verified foundation checks:
 
@@ -1602,14 +1602,14 @@ git commit -m "feat: add operational terminal interface"
 - Create: `.github/workflows/release.yml`
 - Modify: `Makefile`
 
-- [ ] **Step 1: Implement a deterministic fake Pi**
+- [x] **Step 1: Implement a deterministic fake Pi**
 
 The fixture reads its prompt, emits planner YAML for planner prompts, creates a
 declared artifact for executor prompts, fails the first verification with an
 exact retry prompt, and passes the second verification. Behavior is controlled
 only by temporary fixture state.
 
-- [ ] **Step 2: Write the end-to-end lifecycle test**
+- [x] **Step 2: Write the end-to-end lifecycle test**
 
 The test must:
 
@@ -1623,13 +1623,13 @@ The test must:
 8. assert immutable prompts, logs, reports, events, and artifacts;
 9. assert task status is `COMPLETED`.
 
-- [ ] **Step 3: Write the restart test**
+- [x] **Step 3: Write the restart test**
 
 Terminate the engine during execution, restart it with the same home, and
 assert the interrupted attempt is preserved, a new attempt runs, no stale
 lease remains, and the final task completes.
 
-- [ ] **Step 4: Document operator contracts**
+- [x] **Step 4: Document operator contracts**
 
 `README.md` must cover installation, `init`, `doctor`, foreground/daemon
 startup, goal submission, direct YAML enqueue, CLI inspection, TUI startup,
@@ -1638,7 +1638,7 @@ default address, and the trusted-single-user security boundary.
 The remaining docs must describe every config key, task schema field, lifecycle
 state, retry rule, filesystem path, backup requirement, and recovery behavior.
 
-- [ ] **Step 5: Add CI and release builds**
+- [x] **Step 5: Add CI and release builds**
 
 CI runs:
 
@@ -1652,7 +1652,7 @@ Release builds produce checksummed binaries for current supported combinations
 of Linux, macOS, and Windows on amd64 and arm64. The CGo-free SQLite driver
 must keep `CGO_ENABLED=0` builds working.
 
-- [ ] **Step 6: Run final verification**
+- [x] **Step 6: Run final verification**
 
 Run:
 
@@ -1665,7 +1665,7 @@ go test ./test/e2e -count=1
 
 Expected: all commands pass; no test requires a real Pi account.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add README.md Makefile docs test .github
@@ -1675,18 +1675,18 @@ git commit -m "test: verify piramid v1 end to end"
 ## Final acceptance checklist
 
 - [x] `piramid init` creates safe machine-wide state and empty prompt files.
-- [ ] `piramid doctor` is demonstrably read-only.
-- [ ] Foreground and daemon modes run the same engine.
-- [ ] CLI and TUI communicate only through the TCP API.
-- [ ] Natural-language goals produce reviewable one-task or multi-task plans.
-- [ ] Direct task YAML admission remains supported.
-- [ ] Every Pi role runs with the canonical project directory as `cmd.Dir`.
-- [ ] Workspace leases prevent conflicting project mutation through verification.
-- [ ] Executor and verifier are separate Pi invocations.
-- [ ] Pi-Ramid never edits verifier retry instructions.
-- [ ] SQLite contains metadata while large logs remain files.
-- [ ] Every attempt, prompt, report, event, and artifact reference is preserved.
-- [ ] Interrupted active work recovers as a new attempt.
-- [ ] Dependency failures block descendants.
-- [ ] Loopback remains the default and non-loopback emits a security warning.
-- [ ] Race, vet, build, lifecycle, and restart tests pass.
+- [x] `piramid doctor` is demonstrably read-only.
+- [x] Foreground and daemon modes run the same engine.
+- [x] CLI and TUI communicate only through the TCP API.
+- [x] Natural-language goals produce reviewable one-task or multi-task plans.
+- [x] Direct task YAML admission remains supported.
+- [x] Every Pi role runs with the canonical project directory as `cmd.Dir`.
+- [x] Workspace leases prevent conflicting project mutation through verification.
+- [x] Executor and verifier are separate Pi invocations.
+- [x] Pi-Ramid never edits verifier retry instructions.
+- [x] SQLite contains metadata while large logs remain files.
+- [x] Every attempt, prompt, report, event, and artifact reference is preserved.
+- [x] Interrupted active work recovers as a new attempt.
+- [x] Dependency failures block descendants.
+- [x] Loopback remains the default and non-loopback emits a security warning.
+- [x] Race, vet, build, lifecycle, and restart tests pass.

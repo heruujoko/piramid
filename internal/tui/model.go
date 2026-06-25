@@ -161,7 +161,9 @@ func (m Model) loadLogCmd() tea.Cmd {
 func (m Model) subscribeCmd() tea.Cmd {
 	after := m.lastEventID
 	return func() tea.Msg {
-		events, errs := m.client.StreamEvents(context.Background(), after)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		events, errs := m.client.StreamEvents(ctx, after)
 		select {
 		case event, ok := <-events:
 			if !ok {

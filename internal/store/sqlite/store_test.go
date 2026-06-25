@@ -326,6 +326,41 @@ func TestFailedVerificationBecomesRunnableAtRetryTime(t *testing.T) {
 	}
 }
 
+func TestOperationalFailureDoesNotOverwriteOperatorCancellation(t *testing.T) {
+	st := openTestStore(t)
+	goal, plan := testGoalPlan()
+	plan.Tasks = plan.Tasks[:1]
+	if err := st.AdmitPlan(context.Background(), goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := st.StartAttempt(context.Background(), storepkg.StartAttemptInput{
+		TaskID: "TASK-1", WorkerID: "worker-1", Runtime: "pi-cli", StartedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := st.CancelTask(context.Background(), "TASK-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordOperationalFailure(context.Background(), storepkg.OperationalFailureInput{
+		TaskID: "TASK-1", AttemptID: attempt.ID, FailureClass: "context_cancelled",
+		FinishedAt: now.Add(time.Second), NextRunAt: now.Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task, err := st.GetTask(context.Background(), "TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != domain.TaskCancelled {
+		t.Fatalf("status = %s, want CANCELLED", task.Status)
+	}
+	if task.Attempts[0].Status != domain.AttemptInterrupted {
+		t.Fatalf("attempt status = %s, want INTERRUPTED", task.Attempts[0].Status)
+	}
+}
+
 func TestReconcileBlockedMarksDescendantsOfTerminalFailure(t *testing.T) {
 	st := openTestStore(t)
 	goal, plan := testGoalPlan()

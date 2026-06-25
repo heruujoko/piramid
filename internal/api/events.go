@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	storepkg "github.com/heruujoko/piramid/internal/store"
 )
@@ -19,22 +20,35 @@ func (s *Server) events(writer http.ResponseWriter, request *http.Request) {
 		}
 		after = parsed
 	}
-	events, err := s.application.ListEvents(request.Context(), after, 1000)
-	if err != nil {
-		handleError(writer, err)
-		return
-	}
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Cache-Control", "no-cache")
 	writer.Header().Set("Connection", "keep-alive")
 	writer.WriteHeader(http.StatusOK)
-	for _, event := range events {
-		content, _ := json.Marshal(event)
-		_, _ = fmt.Fprintf(writer, "id: %d\nevent: %s\ndata: %s\n\n",
-			event.ID, event.EntityType, content)
-	}
-	if flusher, ok := writer.(http.Flusher); ok {
-		flusher.Flush()
+	flusher, _ := writer.(http.Flusher)
+	for {
+		events, err := s.application.ListEvents(request.Context(), after, 1000)
+		if err != nil {
+			return
+		}
+		for _, event := range events {
+			if event.ID <= after {
+				continue
+			}
+			content, _ := json.Marshal(event)
+			_, _ = fmt.Fprintf(writer, "id: %d\nevent: %s\ndata: %s\n\n",
+				event.ID, event.EntityType, content)
+			after = event.ID
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		timer := time.NewTimer(250 * time.Millisecond)
+		select {
+		case <-request.Context().Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }
 

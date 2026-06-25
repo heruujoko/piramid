@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,39 @@ type fakeApplication struct {
 	retried     string
 	cancelled   string
 	lastEventID int64
+	eventCalls  int
+}
+
+type cancelOnFlushWriter struct {
+	header http.Header
+	body   bytes.Buffer
+	cancel context.CancelFunc
+	mu     sync.Mutex
+	status int
+}
+
+func (w *cancelOnFlushWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *cancelOnFlushWriter) WriteHeader(status int) {
+	w.status = status
+}
+
+func (w *cancelOnFlushWriter) Write(content []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.body.Write(content)
+}
+
+func (w *cancelOnFlushWriter) Flush() {
+	w.cancel()
+}
+
+func (w *cancelOnFlushWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.body.String()
 }
 
 func (f *fakeApplication) Health(context.Context) error { return nil }
@@ -72,6 +106,7 @@ func (f *fakeApplication) ReadAttemptLog(
 }
 func (f *fakeApplication) ListEvents(_ context.Context, after int64, _ int) ([]storepkg.Event, error) {
 	f.lastEventID = after
+	f.eventCalls++
 	return f.events, nil
 }
 
@@ -184,20 +219,15 @@ func TestSSEReplaysFromLastEventID(t *testing.T) {
 		ID: 8, EntityType: "task", EntityID: "TASK-1", EventType: "TASK_STARTED",
 		PayloadJSON: `{"attempt":1}`, CreatedAt: time.Now().UTC(),
 	}}}
-	server := httptest.NewServer(NewServer(application))
-	defer server.Close()
-	request, _ := http.NewRequest(http.MethodGet, server.URL+"/v1/events", nil)
+	request := httptest.NewRequest(http.MethodGet, "/v1/events", nil)
 	request.Header.Set("Last-Event-ID", "7")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	content, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if application.lastEventID != 7 || !strings.Contains(string(content), "id: 8") {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request = request.WithContext(ctx)
+	writer := &cancelOnFlushWriter{header: make(http.Header), cancel: cancel}
+	NewServer(application).ServeHTTP(writer, request)
+	content := writer.String()
+	if application.lastEventID != 7 || !strings.Contains(content, "id: 8") {
 		t.Fatalf("last=%d content=%q", application.lastEventID, content)
 	}
 }

@@ -265,11 +265,15 @@ func (s *Store) RecordOperationalFailure(
 		return err
 	}
 	defer tx.Rollback()
+	var status string
 	var attemptCount, maxAttempts int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT attempt_count, max_attempts FROM tasks WHERE id = ?
-	`, input.TaskID).Scan(&attemptCount, &maxAttempts); err != nil {
+		SELECT status, attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&status, &attemptCount, &maxAttempts); err != nil {
 		return err
+	}
+	if domain.TaskStatus(status) == domain.TaskCancelled {
+		return tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE attempts SET status = ?, failure_class = ?, finished_at = ? WHERE id = ?
