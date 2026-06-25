@@ -75,8 +75,13 @@ func (s *Store) GetTask(ctx context.Context, id string) (domain.TaskView, error)
 	}
 
 	attemptRows, err := s.db.QueryContext(ctx, `
-		SELECT id, task_id, attempt_number, worker_id, status, started_at
-		FROM attempts WHERE task_id = ? ORDER BY attempt_number
+		SELECT a.id, a.task_id, a.attempt_number, a.worker_id, a.status,
+		       a.started_at, COALESCE(a.finished_at, ''), a.exit_code,
+		       COALESCE(v.status, ''), COALESCE(v.reason_summary, ''),
+		       COALESCE(v.retry_prompt, ''), COALESCE(v.report_path, '')
+		FROM attempts a
+		LEFT JOIN verifications v ON v.attempt_id = a.id
+		WHERE a.task_id = ? ORDER BY a.attempt_number
 	`, id)
 	if err != nil {
 		return domain.TaskView{}, err
@@ -84,14 +89,29 @@ func (s *Store) GetTask(ctx context.Context, id string) (domain.TaskView, error)
 	defer attemptRows.Close()
 	for attemptRows.Next() {
 		var attempt domain.Attempt
-		var startedAt string
+		var startedAt, finishedAt, verificationStatus, reason, retryPrompt string
+		var exitCode sql.NullInt64
 		if err := attemptRows.Scan(
 			&attempt.ID, &attempt.TaskID, &attempt.AttemptNumber,
 			&attempt.WorkerID, &attempt.Status, &startedAt,
+			&finishedAt, &exitCode, &verificationStatus, &reason,
+			&retryPrompt, &attempt.ReportPath,
 		); err != nil {
 			return domain.TaskView{}, err
 		}
 		attempt.StartedAt = parseTime(startedAt)
+		attempt.FinishedAt = parseTime(finishedAt)
+		if exitCode.Valid {
+			value := int(exitCode.Int64)
+			attempt.ExitCode = &value
+		}
+		if verificationStatus != "" {
+			attempt.Verification = &domain.Verification{
+				Status:      domain.VerificationStatus(verificationStatus),
+				Reasons:     []string{reason},
+				RetryPrompt: retryPrompt,
+			}
+		}
 		view.Attempts = append(view.Attempts, attempt)
 	}
 	return view, attemptRows.Err()

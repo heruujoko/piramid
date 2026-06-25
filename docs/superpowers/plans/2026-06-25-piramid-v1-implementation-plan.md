@@ -1500,7 +1500,7 @@ git commit -m "feat: diagnose piramid dependencies safely"
 - Create: `internal/cli/tui.go`
 - Modify: `internal/cli/root.go`
 
-- [ ] **Step 1: Add TUI dependencies**
+- [x] **Step 1: Add TUI dependencies**
 
 Run:
 
@@ -1509,7 +1509,7 @@ go get github.com/charmbracelet/bubbletea
 go get github.com/charmbracelet/lipgloss
 ```
 
-- [ ] **Step 2: Write state-model tests**
+- [x] **Step 2: Write state-model tests**
 
 Assert:
 
@@ -1522,7 +1522,7 @@ Assert:
 - goal submission uses the same draft/confirm API;
 - no TUI message accesses SQLite or runtime adapters directly.
 
-- [ ] **Step 3: Run tests and confirm failure**
+- [x] **Step 3: Run tests and confirm failure**
 
 Run:
 
@@ -1532,7 +1532,7 @@ go test ./internal/tui
 
 Expected: compilation fails because the Bubble Tea model is missing.
 
-- [ ] **Step 4: Implement the model and views**
+- [x] **Step 4: Implement the model and views**
 
 Required views:
 
@@ -1562,12 +1562,12 @@ l            toggle stdout/stderr
 
 State-changing keys show confirmation before sending API requests.
 
-- [ ] **Step 5: Add `piramid tui`**
+- [x] **Step 5: Add `piramid tui`**
 
 The command accepts `--s` and `--p`, constructs the shared API client, and runs
 the Bubble Tea program in alternate-screen mode.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 

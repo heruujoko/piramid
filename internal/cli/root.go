@@ -20,5 +20,6 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newRetryCommand())
 	cmd.AddCommand(newCancelCommand())
 	cmd.AddCommand(newDoctorCommand())
+	cmd.AddCommand(newTUICommand())
 	return cmd
 }
