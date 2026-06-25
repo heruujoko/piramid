@@ -839,7 +839,7 @@ git commit -m "feat: supervise configurable runtime processes"
 - Create: `internal/intake/service_test.go`
 - Modify: `internal/app/service.go`
 
-- [ ] **Step 1: Write intake service tests**
+- [x] **Step 1: Write intake service tests**
 
 Cover:
 
@@ -853,7 +853,7 @@ Cover:
 - confirmed plans persist goal, planner logs, prompt, plan, and task files;
 - admission is atomic if persistence fails.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -863,7 +863,7 @@ go test ./internal/intake
 
 Expected: compilation fails because `intake.Service` is undefined.
 
-- [ ] **Step 3: Implement the planner instruction contract**
+- [x] **Step 3: Implement the planner instruction contract**
 
 The generated planner body must require:
 
@@ -877,7 +877,7 @@ The generated planner body must require:
 - no secrets;
 - no prose outside the YAML document.
 
-- [ ] **Step 4: Implement the two-phase intake API**
+- [x] **Step 4: Implement the two-phase intake API**
 
 ```go
 type DraftRequest struct {
@@ -901,7 +901,7 @@ again and admits the complete graph transactionally. `Reject` preserves the
 draft but marks it rejected. `Draft` holds a shared project read lease from
 before process launch until planner output and logs are durably recorded.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 

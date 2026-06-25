@@ -62,6 +62,8 @@ type TaskFilter struct {
 }
 
 type Store interface {
+	SaveGoalDraft(context.Context, domain.Goal, PersistedPaths) error
+	UpdateGoalStatus(context.Context, string, domain.GoalStatus, time.Time) error
 	AdmitPlan(context.Context, domain.Goal, domain.Plan, PersistedPaths) error
 	ListRunnable(context.Context, time.Time, int) ([]domain.TaskRecord, error)
 	AcquireReadLease(context.Context, string, string) error
