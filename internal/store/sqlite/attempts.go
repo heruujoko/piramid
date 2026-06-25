@@ -1,0 +1,372 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/heruujoko/piramid/internal/domain"
+	storepkg "github.com/heruujoko/piramid/internal/store"
+)
+
+func (s *Store) StartAttempt(
+	ctx context.Context,
+	input storepkg.StartAttemptInput,
+) (domain.Attempt, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Attempt{}, err
+	}
+	defer tx.Rollback()
+
+	startedAt := input.StartedAt
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+
+	var status, projectPath, model, nextRunAt string
+	var attemptCount int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status, project_path, model, attempt_count, COALESCE(next_run_at, '')
+		FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&status, &projectPath, &model, &attemptCount, &nextRunAt); err != nil {
+		return domain.Attempt{}, err
+	}
+	if domain.TaskStatus(status) == domain.TaskRetryWait {
+		if retryAt := parseTime(nextRunAt); retryAt.IsZero() || startedAt.Before(retryAt) {
+			return domain.Attempt{}, fmt.Errorf("task %s retry is not ready", input.TaskID)
+		}
+		if err := appendEvent(ctx, tx, "task", input.TaskID, "TASK_RETRY_READY",
+			map[string]any{"ready_at": nextRunAt}, startedAt); err != nil {
+			return domain.Attempt{}, err
+		}
+		status = string(domain.TaskPending)
+	}
+	if !domain.CanTransition(domain.TaskStatus(status), domain.TaskRunning) {
+		return domain.Attempt{}, fmt.Errorf("task %s cannot transition from %s to RUNNING", input.TaskID, status)
+	}
+
+	var leaseCount int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM workspace_leases WHERE project_path = ?
+	`, projectPath).Scan(&leaseCount); err != nil {
+		return domain.Attempt{}, err
+	}
+	if leaseCount > 0 {
+		return domain.Attempt{}, fmt.Errorf("%w: %s", storepkg.ErrProjectLeased, projectPath)
+	}
+
+	attemptNumber := attemptCount + 1
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO attempts(
+			task_id, attempt_number, worker_id, status, runtime, model,
+			prompt_path, prompt_hash, stdout_path, stderr_path, started_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, input.TaskID, attemptNumber, input.WorkerID, domain.AttemptRunning,
+		input.Runtime, model, input.PromptPath, input.PromptHash,
+		input.StdoutPath, input.StderrPath, formatTime(startedAt))
+	if err != nil {
+		return domain.Attempt{}, err
+	}
+	attemptID, err := result.LastInsertId()
+	if err != nil {
+		return domain.Attempt{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO workspace_leases(
+			project_path, mode, holder_type, holder_id, acquired_at
+		) VALUES (?, 'WRITE', 'attempt', ?, ?)
+	`, projectPath, fmt.Sprint(attemptID), formatTime(startedAt)); err != nil {
+		return domain.Attempt{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, attempt_count = ?, next_run_at = NULL, updated_at = ?
+		WHERE id = ?
+	`, domain.TaskRunning, attemptNumber, formatTime(startedAt), input.TaskID); err != nil {
+		return domain.Attempt{}, err
+	}
+	if err := appendEvent(ctx, tx, "task", input.TaskID, "TASK_STARTED",
+		map[string]any{"attempt_id": attemptID, "attempt_number": attemptNumber}, startedAt); err != nil {
+		return domain.Attempt{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Attempt{}, err
+	}
+	return domain.Attempt{
+		ID:            attemptID,
+		TaskID:        input.TaskID,
+		AttemptNumber: attemptNumber,
+		WorkerID:      input.WorkerID,
+		Status:        domain.AttemptRunning,
+		StartedAt:     startedAt,
+	}, nil
+}
+
+func (s *Store) PrepareAttempt(ctx context.Context, input storepkg.AttemptPathsInput) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE attempts
+		SET prompt_path = ?, prompt_hash = ?, stdout_path = ?, stderr_path = ?
+		WHERE id = ? AND status = ?
+	`, input.PromptPath, input.PromptHash, input.StdoutPath, input.StderrPath,
+		input.AttemptID, domain.AttemptRunning)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) PrepareVerifier(
+	ctx context.Context,
+	attemptID int64,
+	stdoutPath string,
+	stderrPath string,
+) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE attempts
+		SET verifier_stdout_path = ?, verifier_stderr_path = ?
+		WHERE id = ? AND status = ?
+	`, stdoutPath, stderrPath, attemptID, domain.AttemptVerifying)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) RecordArtifacts(
+	ctx context.Context,
+	attemptID int64,
+	artifacts []storepkg.ArtifactRecord,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, artifact := range artifacts {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO artifacts(
+				attempt_id, relative_path, absolute_path, sha256, size_bytes
+			) VALUES (?, ?, ?, ?, ?)
+		`, attemptID, artifact.RelativePath, artifact.AbsolutePath,
+			artifact.SHA256, artifact.SizeBytes); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) MoveToVerification(ctx context.Context, input storepkg.FinishExecutionInput) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE attempts SET status = ?, process_id = ?, exit_code = ?, finished_at = ?
+		WHERE id = ? AND task_id = ?
+	`, domain.AttemptVerifying, input.ProcessID, input.ExitCode,
+		formatTime(input.FinishedAt), input.AttemptID, input.TaskID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?
+	`, domain.TaskVerifying, formatTime(input.FinishedAt), input.TaskID, domain.TaskRunning); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", input.TaskID, "TASK_VERIFYING",
+		map[string]any{"attempt_id": input.AttemptID}, input.FinishedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) FinishVerification(ctx context.Context, input storepkg.FinishVerificationInput) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	reason := ""
+	if len(input.Verification.Reasons) > 0 {
+		reason = input.Verification.Reasons[0]
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO verifications(attempt_id, status, report_path, reason_summary, retry_prompt)
+		VALUES (?, ?, ?, ?, ?)
+	`, input.AttemptID, input.Verification.Status, input.ReportPath,
+		reason, input.Verification.RetryPrompt); err != nil {
+		return err
+	}
+	var attemptCount, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&attemptCount, &maxAttempts); err != nil {
+		return err
+	}
+	taskStatus := domain.TaskCompleted
+	attemptStatus := domain.AttemptCompleted
+	var nextRun any
+	eventType := "TASK_COMPLETED"
+	if input.Verification.Status == domain.VerificationFail {
+		taskStatus = domain.TaskFailed
+		attemptStatus = domain.AttemptFailed
+		eventType = "TASK_FAILED"
+		if attemptCount < maxAttempts {
+			taskStatus = domain.TaskRetryWait
+			nextRun = formatTime(input.NextRunAt)
+			eventType = "TASK_RETRY_SCHEDULED"
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE attempts SET status = ?, finished_at = ? WHERE id = ? AND task_id = ?
+	`, attemptStatus, formatTime(input.FinishedAt), input.AttemptID, input.TaskID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, next_run_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, taskStatus, nextRun, formatTime(input.FinishedAt), input.TaskID, domain.TaskVerifying); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM workspace_leases WHERE holder_type = 'attempt' AND holder_id = ?
+	`, fmt.Sprint(input.AttemptID)); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", input.TaskID, eventType,
+		map[string]any{"attempt_id": input.AttemptID}, input.FinishedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) RecordOperationalFailure(
+	ctx context.Context,
+	input storepkg.OperationalFailureInput,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var status string
+	var attemptCount, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status, attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&status, &attemptCount, &maxAttempts); err != nil {
+		return err
+	}
+	if domain.TaskStatus(status) == domain.TaskCancelled {
+		return tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE attempts SET status = ?, failure_class = ?, finished_at = ? WHERE id = ?
+	`, domain.AttemptFailed, input.FailureClass, formatTime(input.FinishedAt), input.AttemptID); err != nil {
+		return err
+	}
+	taskStatus := domain.TaskFailed
+	var nextRun any
+	eventType := "TASK_FAILED"
+	if attemptCount < maxAttempts {
+		taskStatus = domain.TaskRetryWait
+		nextRun = formatTime(input.NextRunAt)
+		eventType = "OPERATIONAL_FAILURE"
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, next_run_at = ?, updated_at = ? WHERE id = ?
+	`, taskStatus, nextRun, formatTime(input.FinishedAt), input.TaskID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM workspace_leases WHERE holder_type = 'attempt' AND holder_id = ?
+	`, fmt.Sprint(input.AttemptID)); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", input.TaskID, eventType,
+		map[string]any{"attempt_id": input.AttemptID, "class": input.FailureClass}, input.FinishedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) RecoverActive(
+	ctx context.Context,
+	now time.Time,
+) ([]storepkg.InterruptedAttempt, error) {
+	interrupted, err := s.ListActiveAttempts(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	for _, item := range interrupted {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE attempts SET status = ?, failure_class = 'interrupted', finished_at = ? WHERE id = ?
+		`, domain.AttemptInterrupted, formatTime(now), item.AttemptID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE tasks SET status = ?, next_run_at = ?, updated_at = ? WHERE id = ?
+		`, domain.TaskPending, formatTime(now), formatTime(now), item.TaskID); err != nil {
+			return nil, err
+		}
+		if err := appendEvent(ctx, tx, "task", item.TaskID, "ATTEMPT_INTERRUPTED",
+			map[string]any{"attempt_id": item.AttemptID}, now); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM workspace_leases"); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return interrupted, nil
+}
+
+func (s *Store) ListActiveAttempts(
+	ctx context.Context,
+) ([]storepkg.InterruptedAttempt, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, task_id, COALESCE(process_id, 0) FROM attempts
+		WHERE status IN (?, ?)
+	`, domain.AttemptRunning, domain.AttemptVerifying)
+	if err != nil {
+		return nil, err
+	}
+	var interrupted []storepkg.InterruptedAttempt
+	for rows.Next() {
+		var item storepkg.InterruptedAttempt
+		if err := rows.Scan(&item.AttemptID, &item.TaskID, &item.ProcessID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		interrupted = append(interrupted, item)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return interrupted, nil
+}
+
+var _ = sql.ErrNoRows
