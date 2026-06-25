@@ -31,6 +31,9 @@ func Init(paths Paths) error {
 			return err
 		}
 	}
+	if err := createExclusive(paths.Database, nil); err != nil {
+		return err
+	}
 
 	content, err := config.Marshal(config.Default())
 	if err != nil {

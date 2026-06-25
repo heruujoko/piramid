@@ -20,12 +20,28 @@ func (s *Store) StartAttempt(
 	}
 	defer tx.Rollback()
 
-	var status, projectPath, model string
+	startedAt := input.StartedAt
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+
+	var status, projectPath, model, nextRunAt string
 	var attemptCount int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT status, project_path, model, attempt_count FROM tasks WHERE id = ?
-	`, input.TaskID).Scan(&status, &projectPath, &model, &attemptCount); err != nil {
+		SELECT status, project_path, model, attempt_count, COALESCE(next_run_at, '')
+		FROM tasks WHERE id = ?
+	`, input.TaskID).Scan(&status, &projectPath, &model, &attemptCount, &nextRunAt); err != nil {
 		return domain.Attempt{}, err
+	}
+	if domain.TaskStatus(status) == domain.TaskRetryWait {
+		if retryAt := parseTime(nextRunAt); retryAt.IsZero() || startedAt.Before(retryAt) {
+			return domain.Attempt{}, fmt.Errorf("task %s retry is not ready", input.TaskID)
+		}
+		if err := appendEvent(ctx, tx, "task", input.TaskID, "TASK_RETRY_READY",
+			map[string]any{"ready_at": nextRunAt}, startedAt); err != nil {
+			return domain.Attempt{}, err
+		}
+		status = string(domain.TaskPending)
 	}
 	if !domain.CanTransition(domain.TaskStatus(status), domain.TaskRunning) {
 		return domain.Attempt{}, fmt.Errorf("task %s cannot transition from %s to RUNNING", input.TaskID, status)
@@ -41,10 +57,6 @@ func (s *Store) StartAttempt(
 		return domain.Attempt{}, fmt.Errorf("project %s is leased", projectPath)
 	}
 
-	startedAt := input.StartedAt
-	if startedAt.IsZero() {
-		startedAt = time.Now().UTC()
-	}
 	attemptNumber := attemptCount + 1
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO attempts(

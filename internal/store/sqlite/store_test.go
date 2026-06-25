@@ -223,6 +223,76 @@ func TestStartAttemptIsUniqueAndRecordsTransitionEvent(t *testing.T) {
 	}
 }
 
+func TestFailedVerificationBecomesRunnableAtRetryTime(t *testing.T) {
+	st := openTestStore(t)
+	goal, plan := testGoalPlan()
+	plan.Tasks = plan.Tasks[:1]
+	if err := st.AdmitPlan(context.Background(), goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+
+	startedAt := time.Date(2026, 6, 25, 10, 0, 0, 0, time.UTC)
+	first, err := st.StartAttempt(context.Background(), storepkg.StartAttemptInput{
+		TaskID:    "TASK-1",
+		WorkerID:  "worker-1",
+		Runtime:   "pi-cli",
+		StartedAt: startedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MoveToVerification(context.Background(), storepkg.FinishExecutionInput{
+		TaskID:     "TASK-1",
+		AttemptID:  first.ID,
+		FinishedAt: startedAt.Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	retryAt := startedAt.Add(5 * time.Minute)
+	if err := st.FinishVerification(context.Background(), storepkg.FinishVerificationInput{
+		TaskID:    "TASK-1",
+		AttemptID: first.ID,
+		Verification: domain.Verification{
+			Status:      domain.VerificationFail,
+			Reasons:     []string{"checks failed"},
+			RetryPrompt: "fix the checks",
+		},
+		NextRunAt:  retryAt,
+		FinishedAt: startedAt.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := st.ListRunnable(context.Background(), retryAt.Add(-time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 0 {
+		t.Fatalf("runnable before retry = %d, want 0", len(before))
+	}
+
+	ready, err := st.ListRunnable(context.Background(), retryAt, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ready) != 1 || ready[0].ID != "TASK-1" {
+		t.Fatalf("runnable at retry = %#v", ready)
+	}
+
+	second, err := st.StartAttempt(context.Background(), storepkg.StartAttemptInput{
+		TaskID:    "TASK-1",
+		WorkerID:  "worker-2",
+		Runtime:   "pi-cli",
+		StartedAt: retryAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.AttemptNumber != 2 {
+		t.Fatalf("attempt number = %d, want 2", second.AttemptNumber)
+	}
+}
+
 func TestReopenPreservesRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	st, err := Open(path)

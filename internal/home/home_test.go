@@ -67,6 +67,14 @@ func TestInitCreatesLayoutAndEmptyPromptFiles(t *testing.T) {
 			t.Fatalf("%s is not empty", path)
 		}
 	}
+
+	databaseInfo, err := os.Stat(paths.Database)
+	if err != nil {
+		t.Fatalf("stat database: %v", err)
+	}
+	if databaseInfo.IsDir() || databaseInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("database mode = %s, want regular file 0600", databaseInfo.Mode())
+	}
 }
 
 func TestInitIsIdempotentAndPreservesConfig(t *testing.T) {

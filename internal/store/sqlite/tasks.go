@@ -134,7 +134,7 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT task_json, status, attempt_count, COALESCE(next_run_at, ''), created_at, updated_at
 		FROM tasks t
-		WHERE t.status = ?
+		WHERE t.status IN (?, ?)
 		  AND (t.next_run_at IS NULL OR t.next_run_at <= ?)
 		  AND NOT EXISTS (
 		      SELECT 1
@@ -147,7 +147,7 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 		  )
 		ORDER BY COALESCE(t.next_run_at, t.created_at), t.created_at, t.id
 		LIMIT ?
-	`, domain.TaskPending, formatTime(now), domain.TaskCompleted, limit)
+	`, domain.TaskPending, domain.TaskRetryWait, formatTime(now), domain.TaskCompleted, limit)
 	if err != nil {
 		return nil, err
 	}
