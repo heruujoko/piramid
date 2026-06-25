@@ -76,7 +76,8 @@ func (s *Service) DraftGoal(
 	ctx context.Context,
 	request intake.DraftRequest,
 ) (intake.Draft, error) {
-	return s.Intake.Draft(ctx, request)
+	draft, err := s.Intake.Draft(ctx, request)
+	return draft, mapStoreError(err)
 }
 
 func (s *Service) ConfirmGoal(ctx context.Context, goalID string) error {

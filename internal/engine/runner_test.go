@@ -169,6 +169,22 @@ func TestRunnerVerifiesNonZeroExecutorExit(t *testing.T) {
 	}
 }
 
+func TestRunnerUsesTaskTimeoutForExecutor(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	fixture.dispatch.Task.Timeout = 30 * time.Second
+	fixture.dispatch.Task.TimeoutText = "30s"
+
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.executor.invocations) != 1 {
+		t.Fatalf("executor invocations = %d, want 1", len(fixture.executor.invocations))
+	}
+	if got := fixture.executor.invocations[0].Timeout; got != 30*time.Second {
+		t.Fatalf("executor timeout = %s, want 30s", got)
+	}
+}
+
 func TestRunnerPersistsExactRetryPrompt(t *testing.T) {
 	fixture := newRunnerFixture(t, 3)
 	fixture.verifier.output = `status: FAIL
@@ -220,6 +236,27 @@ func TestRunnerRecordsOperationalFailureWithoutInventingRetryPrompt(t *testing.T
 
 	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err == nil {
 		t.Fatal("Run() error = nil")
+	}
+	task, err := fixture.store.GetTask(context.Background(), "TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != domain.TaskRetryWait || task.RetryPrompt != "" {
+		t.Fatalf("task = %#v", task.TaskRecord)
+	}
+}
+
+func TestRunnerTreatsExecutorTimeoutAsOperationalFailure(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	fixture.executor.result.TimedOut = true
+	fixture.executor.result.Interrupted = true
+	fixture.executor.result.ExitCode = -1
+
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err == nil {
+		t.Fatal("Run() error = nil")
+	}
+	if len(fixture.verifier.invocations) != 0 {
+		t.Fatalf("verifier invocations = %d, want 0", len(fixture.verifier.invocations))
 	}
 	task, err := fixture.store.GetTask(context.Background(), "TASK-1")
 	if err != nil {

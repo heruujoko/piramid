@@ -136,8 +136,10 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 		return r.operationalFailure(ctx, task, attempt, "attempt_prepare", err)
 	}
 
+	executorRuntime := r.executorRuntime
+	executorRuntime.Timeout = task.Timeout
 	executorResult, err := r.invoke(
-		ctx, r.executor, r.executorRuntime, task, attempt,
+		ctx, r.executor, executorRuntime, task, attempt,
 		executorPrompt, paths.ExecutorPrompt, paths.Stdout, paths.Stderr,
 	)
 	if writeErr := r.writeProcessResult(paths.Process, executorResult); writeErr != nil && err == nil {
@@ -145,6 +147,16 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 	}
 	if err != nil {
 		return r.operationalFailure(ctx, task, attempt, "executor_launch", err)
+	}
+	if executorResult.TimedOut {
+		return r.operationalFailure(
+			ctx, task, attempt, "executor_timeout", errors.New("executor timed out"),
+		)
+	}
+	if executorResult.Interrupted {
+		return r.operationalFailure(
+			ctx, task, attempt, "executor_interrupted", errors.New("executor was interrupted"),
+		)
 	}
 
 	evidence, artifactRecords := discoverArtifacts(task.ProjectPath, task.Outputs)
