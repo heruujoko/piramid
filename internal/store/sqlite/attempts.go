@@ -281,23 +281,8 @@ func (s *Store) RecoverActive(
 	ctx context.Context,
 	now time.Time,
 ) ([]storepkg.InterruptedAttempt, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, task_id, COALESCE(process_id, 0) FROM attempts
-		WHERE status IN (?, ?)
-	`, domain.AttemptRunning, domain.AttemptVerifying)
+	interrupted, err := s.ListActiveAttempts(ctx)
 	if err != nil {
-		return nil, err
-	}
-	var interrupted []storepkg.InterruptedAttempt
-	for rows.Next() {
-		var item storepkg.InterruptedAttempt
-		if err := rows.Scan(&item.AttemptID, &item.TaskID, &item.ProcessID); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		interrupted = append(interrupted, item)
-	}
-	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 
@@ -322,10 +307,35 @@ func (s *Store) RecoverActive(
 			return nil, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM workspace_leases WHERE mode = 'WRITE'"); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM workspace_leases"); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return interrupted, nil
+}
+
+func (s *Store) ListActiveAttempts(
+	ctx context.Context,
+) ([]storepkg.InterruptedAttempt, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, task_id, COALESCE(process_id, 0) FROM attempts
+		WHERE status IN (?, ?)
+	`, domain.AttemptRunning, domain.AttemptVerifying)
+	if err != nil {
+		return nil, err
+	}
+	var interrupted []storepkg.InterruptedAttempt
+	for rows.Next() {
+		var item storepkg.InterruptedAttempt
+		if err := rows.Scan(&item.AttemptID, &item.TaskID, &item.ProcessID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		interrupted = append(interrupted, item)
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	return interrupted, nil

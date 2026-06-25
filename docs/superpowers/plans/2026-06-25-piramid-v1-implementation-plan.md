@@ -1099,7 +1099,7 @@ git commit -m "feat: execute verify and retry task attempts"
 - Modify: `internal/store/sqlite/attempts.go`
 - Modify: `internal/store/sqlite/tasks.go`
 
-- [ ] **Step 1: Write recovery tests**
+- [x] **Step 1: Write recovery tests**
 
 Create persisted fixtures for:
 
@@ -1114,7 +1114,7 @@ Assert that active orphan attempts become interrupted, stale leases release,
 eligible tasks create new attempts, completed history is unchanged, and an
 unrecoverable persistence error prevents engine startup.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1124,7 +1124,7 @@ go test ./internal/engine -run Recovery
 
 Expected: compilation fails because recovery is missing.
 
-- [ ] **Step 3: Implement recovery**
+- [x] **Step 3: Implement recovery**
 
 Expose:
 
@@ -1140,7 +1140,7 @@ Recovery must run before the API listener and scheduler start. It appends events
 for every reconciliation and never converts an interrupted attempt to
 completed.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 

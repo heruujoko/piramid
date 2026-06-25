@@ -93,6 +93,7 @@ type Store interface {
 	MoveToVerification(context.Context, FinishExecutionInput) error
 	FinishVerification(context.Context, FinishVerificationInput) error
 	RecordOperationalFailure(context.Context, OperationalFailureInput) error
+	ListActiveAttempts(context.Context) ([]InterruptedAttempt, error)
 	RecoverActive(context.Context, time.Time) ([]InterruptedAttempt, error)
 	GetTask(context.Context, string) (domain.TaskView, error)
 	ListTasks(context.Context, TaskFilter) ([]domain.TaskView, error)
