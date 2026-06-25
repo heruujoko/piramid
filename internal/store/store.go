@@ -79,6 +79,15 @@ type TaskFilter struct {
 	Limit    int
 }
 
+type Event struct {
+	ID          int64     `json:"id"`
+	EntityType  string    `json:"entity_type"`
+	EntityID    string    `json:"entity_id"`
+	EventType   string    `json:"event_type"`
+	PayloadJSON string    `json:"payload_json"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Store interface {
 	SaveGoalDraft(context.Context, domain.Goal, PersistedPaths) error
 	UpdateGoalStatus(context.Context, string, domain.GoalStatus, time.Time) error

@@ -1171,7 +1171,7 @@ git commit -m "feat: recover interrupted orchestration state"
 - Create: `internal/api/server_test.go`
 - Modify: `internal/app/service.go`
 
-- [ ] **Step 1: Write API contract tests**
+- [x] **Step 1: Write API contract tests**
 
 Test these endpoints:
 
@@ -1193,7 +1193,7 @@ GET    /v1/events
 Assert JSON content type, bounded log reads, stable error envelopes, request
 size limits, context cancellation, and SSE replay from `Last-Event-ID`.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1203,7 +1203,7 @@ go test ./internal/api
 
 Expected: compilation fails because server and client are missing.
 
-- [ ] **Step 3: Implement API envelopes and routing**
+- [x] **Step 3: Implement API envelopes and routing**
 
 Use standard `http.ServeMux`. Responses follow:
 
@@ -1219,13 +1219,13 @@ type ErrorResponse struct {
 Map validation to 400, missing records to 404, illegal lifecycle actions to
 409, and internal failures to 500 without leaking secrets or SQL.
 
-- [ ] **Step 4: Implement the shared client**
+- [x] **Step 4: Implement the shared client**
 
 The client owns base URL construction from host and port, JSON encoding,
 timeouts, API error decoding, SSE reconnection, and bounded log retrieval.
 CLI and TUI must not call repositories directly.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
