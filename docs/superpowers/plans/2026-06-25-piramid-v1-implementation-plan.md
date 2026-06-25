@@ -1341,7 +1341,7 @@ git commit -m "feat: run piramid in foreground or daemon mode"
 - Create: `internal/cli/commands_test.go`
 - Modify: `internal/cli/root.go`
 
-- [ ] **Step 1: Write command tests against a fake API**
+- [x] **Step 1: Write command tests against a fake API**
 
 Assert:
 
@@ -1355,7 +1355,7 @@ Assert:
 - every client command accepts `--s` and `--p`;
 - connection errors mention the attempted address.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1365,23 +1365,23 @@ go test ./internal/cli -run Commands
 
 Expected: command constructors are undefined.
 
-- [ ] **Step 3: Implement shared client flags**
+- [x] **Step 3: Implement shared client flags**
 
 Defaults are `127.0.0.1` and `7433`. Build `http://HOST:PORT` without silently
 changing schemes or accepting malformed ports.
 
-- [ ] **Step 4: Implement goal preview**
+- [x] **Step 4: Implement goal preview**
 
 The preview includes goal ID, each task ID/title/project, dependencies, DOD
 count, maximum attempts, and timeout. It never displays credential environment
 values or full prompts.
 
-- [ ] **Step 5: Implement remaining commands**
+- [x] **Step 5: Implement remaining commands**
 
 All state-changing commands call the API. Exit non-zero on API errors.
 Human-readable output goes to stdout; diagnostics go to stderr.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 

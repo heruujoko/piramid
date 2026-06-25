@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/heruujoko/piramid/internal/app"
 	"github.com/heruujoko/piramid/internal/domain"
+	"github.com/heruujoko/piramid/internal/intake"
 	storepkg "github.com/heruujoko/piramid/internal/store"
 )
 
@@ -50,6 +52,67 @@ func (c *Client) GetTask(ctx context.Context, taskID string) (domain.TaskView, e
 	var task domain.TaskView
 	err := c.doJSON(ctx, http.MethodGet, "/v1/tasks/"+taskID, nil, &task)
 	return task, err
+}
+
+func (c *Client) DraftGoal(
+	ctx context.Context,
+	request intake.DraftRequest,
+) (intake.Draft, error) {
+	var draft intake.Draft
+	err := c.doJSON(ctx, http.MethodPost, "/v1/goals/draft", map[string]string{
+		"goal_text": request.GoalText, "project_path": request.ProjectPath,
+	}, &draft)
+	return draft, err
+}
+
+func (c *Client) ConfirmGoal(ctx context.Context, goalID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/goals/"+goalID+"/confirm", map[string]any{}, nil)
+}
+
+func (c *Client) RejectGoal(ctx context.Context, goalID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/goals/"+goalID+"/reject", map[string]any{}, nil)
+}
+
+func (c *Client) Enqueue(ctx context.Context, plan domain.Plan) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/tasks", plan, nil)
+}
+
+func (c *Client) ListWorkers(ctx context.Context) ([]app.WorkerView, error) {
+	var workers []app.WorkerView
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/workers", nil, &workers); err != nil {
+		return nil, err
+	}
+	return workers, nil
+}
+
+func (c *Client) RetryTask(ctx context.Context, taskID string, override bool) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/tasks/"+taskID+"/retry",
+		map[string]bool{"override": override}, nil)
+}
+
+func (c *Client) CancelTask(ctx context.Context, taskID string) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/tasks/"+taskID+"/cancel", map[string]any{}, nil)
+}
+
+type LogChunk struct {
+	Content    string `json:"content"`
+	NextOffset int64  `json:"next_offset"`
+}
+
+func (c *Client) ReadLog(
+	ctx context.Context,
+	attemptID int64,
+	stream string,
+	offset int64,
+	limit int,
+) (LogChunk, error) {
+	var chunk LogChunk
+	path := fmt.Sprintf(
+		"/v1/attempts/%d/logs?stream=%s&offset=%d&limit=%d",
+		attemptID, stream, offset, limit,
+	)
+	err := c.doJSON(ctx, http.MethodGet, path, nil, &chunk)
+	return chunk, err
 }
 
 func (c *Client) doJSON(
