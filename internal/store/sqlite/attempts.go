@@ -54,7 +54,7 @@ func (s *Store) StartAttempt(
 		return domain.Attempt{}, err
 	}
 	if leaseCount > 0 {
-		return domain.Attempt{}, fmt.Errorf("project %s is leased", projectPath)
+		return domain.Attempt{}, fmt.Errorf("%w: %s", storepkg.ErrProjectLeased, projectPath)
 	}
 
 	attemptNumber := attemptCount + 1

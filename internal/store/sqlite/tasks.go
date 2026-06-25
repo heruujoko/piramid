@@ -176,6 +176,63 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 	return records, rows.Err()
 }
 
+func (s *Store) ReconcileBlocked(ctx context.Context, now time.Time) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
+		WITH RECURSIVE blocked(id) AS (
+			SELECT d.task_id
+			FROM task_dependencies d
+			JOIN tasks dependency ON dependency.id = d.depends_on_task_id
+			WHERE dependency.status IN (?, ?, ?)
+			UNION
+			SELECT d.task_id
+			FROM task_dependencies d
+			JOIN blocked b ON b.id = d.depends_on_task_id
+		)
+		SELECT DISTINCT t.id
+		FROM blocked b
+		JOIN tasks t ON t.id = b.id
+		WHERE t.status IN (?, ?)
+		ORDER BY t.id
+	`, domain.TaskFailed, domain.TaskCancelled, domain.TaskBlocked,
+		domain.TaskPending, domain.TaskRetryWait)
+	if err != nil {
+		return 0, err
+	}
+	var taskIDs []string
+	for rows.Next() {
+		var taskID string
+		if err := rows.Scan(&taskID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	for _, taskID := range taskIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?
+		`, domain.TaskBlocked, formatTime(now), taskID); err != nil {
+			return 0, err
+		}
+		if err := appendEvent(ctx, tx, "task", taskID, "TASK_BLOCKED",
+			map[string]any{"reason": "terminal dependency"}, now); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(taskIDs), nil
+}
+
 func (s *Store) AcquireReadLease(ctx context.Context, projectPath, holderID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -189,7 +246,7 @@ func (s *Store) AcquireReadLease(ctx context.Context, projectPath, holderID stri
 		return err
 	}
 	if writeCount > 0 {
-		return fmt.Errorf("project %s has an active write lease", projectPath)
+		return fmt.Errorf("%w: %s", storepkg.ErrProjectLeased, projectPath)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO workspace_leases(project_path, mode, holder_type, holder_id, acquired_at)

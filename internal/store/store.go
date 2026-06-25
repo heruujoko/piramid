@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/heruujoko/piramid/internal/domain"
 )
+
+var ErrProjectLeased = errors.New("project workspace is leased")
 
 type PersistedPaths struct {
 	GoalPath   string
@@ -65,6 +68,7 @@ type Store interface {
 	SaveGoalDraft(context.Context, domain.Goal, PersistedPaths) error
 	UpdateGoalStatus(context.Context, string, domain.GoalStatus, time.Time) error
 	AdmitPlan(context.Context, domain.Goal, domain.Plan, PersistedPaths) error
+	ReconcileBlocked(context.Context, time.Time) (int, error)
 	ListRunnable(context.Context, time.Time, int) ([]domain.TaskRecord, error)
 	AcquireReadLease(context.Context, string, string) error
 	ReleaseReadLease(context.Context, string, string) error

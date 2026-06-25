@@ -929,7 +929,7 @@ git commit -m "feat: plan natural-language goals through pi"
 - Create: `internal/engine/scheduler_test.go`
 - Create: `internal/engine/workers.go`
 
-- [ ] **Step 1: Write scheduler tests with a fake clock**
+- [x] **Step 1: Write scheduler tests with a fake clock**
 
 Assert:
 
@@ -942,7 +942,7 @@ Assert:
 - planner capacity cannot consume all executor slots;
 - cancellation before dispatch prevents process launch.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -952,7 +952,7 @@ go test ./internal/engine -run Scheduler
 
 Expected: compilation fails because the scheduler is missing.
 
-- [ ] **Step 3: Implement worker and scheduler types**
+- [x] **Step 3: Implement worker and scheduler types**
 
 ```go
 type Clock interface {
@@ -977,13 +977,13 @@ The scheduler asks the store for eligible tasks, acquires the lease and starts
 the attempt transactionally, then emits `Dispatch`. It never mutates task state
 in memory without a committed store transition.
 
-- [ ] **Step 4: Implement graceful start and stop**
+- [x] **Step 4: Implement graceful start and stop**
 
 `Run(ctx)` stops selecting new work when context is cancelled and waits for
 active dispatch loops to report completion. It must not abandon a committed
 running attempt silently.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 

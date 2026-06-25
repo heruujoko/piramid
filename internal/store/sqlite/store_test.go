@@ -293,6 +293,51 @@ func TestFailedVerificationBecomesRunnableAtRetryTime(t *testing.T) {
 	}
 }
 
+func TestReconcileBlockedMarksDescendantsOfTerminalFailure(t *testing.T) {
+	st := openTestStore(t)
+	goal, plan := testGoalPlan()
+	if err := st.AdmitPlan(context.Background(), goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(
+		"UPDATE tasks SET status = ? WHERE id = ?",
+		domain.TaskFailed, "TASK-1",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := st.ReconcileBlocked(context.Background(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("blocked count = %d, want 1", count)
+	}
+	task, err := st.GetTask(context.Background(), "TASK-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != domain.TaskBlocked {
+		t.Fatalf("status = %s, want BLOCKED", task.Status)
+	}
+}
+
+func TestListRunnableUsesDeterministicEnqueueOrder(t *testing.T) {
+	st := openTestStore(t)
+	goal, plan := testGoalPlan()
+	plan.Tasks[1].DependsOn = nil
+	if err := st.AdmitPlan(context.Background(), goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	runnable, err := st.ListRunnable(context.Background(), time.Now().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runnable) != 2 || runnable[0].ID != "TASK-1" || runnable[1].ID != "TASK-2" {
+		t.Fatalf("runnable = %#v", runnable)
+	}
+}
+
 func TestReopenPreservesRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	st, err := Open(path)
