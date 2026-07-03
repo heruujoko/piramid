@@ -12,6 +12,7 @@ const (
 
 type Goal struct {
 	ID          string     `yaml:"id" json:"id"`
+	FireID      string     `yaml:"fire_id,omitempty" json:"fire_id,omitempty"`
 	Text        string     `yaml:"text" json:"text"`
 	ProjectPath string     `yaml:"project_path" json:"project_path"`
 	Status      GoalStatus `yaml:"status" json:"status"`

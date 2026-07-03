@@ -1,0 +1,19 @@
+id: post-merge-cleanup
+name: Post-Merge Cleanup
+file: post-merge-cleanup.md
+goal: Follow-up tech debt and cleanup after merges to main
+cadence: 1d-6h
+risk: low
+tools: [claude-code, github-actions]
+skills: [post-merge-scan, minimal-fix, pr-maintainer]
+state: post-merge-state.md
+phases: [scan-merges, prioritize, fix-small, ticket-large]
+human_gates: [architectural-debt, feature-flags, unresolved-feedback]
+week_one_mode: L1
+token_cost: low
+cost:
+  tokens_noop: 5000
+  tokens_report: 40000
+  tokens_action: 150000
+  suggested_daily_cap: 200000
+  early_exit_required: false

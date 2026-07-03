@@ -1,0 +1,12 @@
+id: LOOP-POST-MERGE
+pattern: post-merge-cleanup
+active: true
+cron: "0 21 * * *"
+autonomy: L1
+trigger: piramid
+goal: |
+  Scan merged PRs, run post-merge cleanup, and route unresolved review feedback through pr-maintainer.
+project_path: /tmp/project
+human_gates: [unresolved-feedback, architectural-debt]
+token:
+  daily_cap: 200000
