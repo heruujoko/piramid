@@ -8,6 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	frontMatterOpen  = "---"
+	frontMatterClose = "\n---"
+)
+
 var (
 	ErrMissingFrontMatter = fmt.Errorf("gate context: missing front-matter")
 	ErrInvalidDecision    = fmt.Errorf("gate context: invalid decision option")
@@ -27,7 +32,7 @@ func ParseContext(content string) (domain.GateContext, error) {
 		return domain.GateContext{}, fmt.Errorf("gate context: %w", err)
 	}
 
-	gc.Body = strings.TrimSpace(body)
+	gc.Body = strings.TrimRight(body, "\n\r\t ")
 
 	if err := validate(gc); err != nil {
 		return domain.GateContext{}, err
@@ -41,16 +46,23 @@ func ParseContext(content string) (domain.GateContext, error) {
 // front-matter, the second "---" line ends it. Everything after is body.
 func splitFrontMatter(content string) (string, string, bool) {
 	content = strings.TrimSpace(content)
-	if !strings.HasPrefix(content, "---") {
+	if !strings.HasPrefix(content, frontMatterOpen) {
 		return "", "", false
 	}
-	rest := content[3:]
-	idx := strings.Index(rest, "\n---")
-	if idx < 0 {
-		return "", "", false
+	rest := content[len(frontMatterOpen):]
+	// Find the closing delimiter on its own line. Using "\n---\n" ensures
+	// we don't match "---" embedded inside YAML content (e.g. in a string).
+	closeIdx := strings.Index(rest, "\n---\n")
+	if closeIdx < 0 {
+		// Also accept "---" at end of content (no trailing newline).
+		if strings.HasSuffix(rest, "\n---") {
+			closeIdx = len(rest) - len(frontMatterClose)
+		} else {
+			return "", "", false
+		}
 	}
-	front := strings.TrimSpace(rest[:idx])
-	body := strings.TrimSpace(rest[idx+4:])
+	front := strings.TrimSpace(rest[:closeIdx])
+	body := strings.TrimLeft(rest[closeIdx+len(frontMatterClose):], "\n\r")
 	return front, body, true
 }
 

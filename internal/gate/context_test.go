@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/heruujoko/piramid/internal/domain"
@@ -139,6 +140,29 @@ Some *markdown* content.
 	}
 }
 
+func TestParseContextPreservesLeadingWhitespace(t *testing.T) {
+	content := `---
+gate: review
+phase: pre-execution
+loop_id: loop-1
+fire_id: fire-1
+summary: Review
+decision_options:
+  - approve
+---
+    code block
+    indented content
+`
+	gc, err := ParseContext(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "    code block\n    indented content"
+	if gc.Body != expected {
+		t.Fatalf("body = %q, want %q", gc.Body, expected)
+	}
+}
+
 func TestParseContextAllowsOptionalFields(t *testing.T) {
 	content := `---
 gate: review
@@ -173,7 +197,7 @@ Body
 }
 
 func isInvalidDecision(err error) bool {
-	return err == ErrInvalidDecision || err.Error() == "gate context: invalid decision option: \"invalid_option\""
+	return errors.Is(err, ErrInvalidDecision)
 }
 
 func TestParseContextEmptyContent(t *testing.T) {
