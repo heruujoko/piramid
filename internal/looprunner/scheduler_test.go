@@ -10,6 +10,9 @@ import (
 
 	"github.com/heruujoko/piramid/internal/definitions"
 	"github.com/heruujoko/piramid/internal/domain"
+	"github.com/heruujoko/piramid/internal/home"
+	"github.com/heruujoko/piramid/internal/intake"
+	"github.com/heruujoko/piramid/internal/records"
 	storepkg "github.com/heruujoko/piramid/internal/store"
 	"github.com/heruujoko/piramid/internal/store/sqlite"
 )
@@ -62,6 +65,41 @@ func TestTickLogsStoreErrors(t *testing.T) {
 		t.Fatalf("err = %v, want %v", err, storeErr)
 	}
 	logger.requireContains(t, "loop tick failed")
+}
+
+func TestTickCreatesConfirmableDraftGoal(t *testing.T) {
+	recordStore := records.New(home.NewPaths(t.TempDir()))
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	scheduler := NewScheduler(Config{
+		Source:  staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:   st,
+		Clock:   fixedClock{now: now},
+		Records: recordStore,
+	})
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fires, err := st.ListFires(context.Background(), "loop-a", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 1 {
+		t.Fatalf("fires = %#v, want one", fires)
+	}
+	service := intake.NewService(intake.ServiceConfig{
+		Repository: st,
+		Records:    recordStore,
+		Now:        func() time.Time { return now },
+	})
+	if err := service.Confirm(context.Background(), fires[0].GoalID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestTickPersistsDueLoopWithSQLiteForeignKeys(t *testing.T) {
@@ -126,6 +164,68 @@ func TestTickCreatesFireAndDraftGoalWhenLoopIsDue(t *testing.T) {
 	}
 	if store.fires[0].GoalID == "" || store.goals[0].ID != store.fires[0].GoalID {
 		t.Fatalf("fire and goal not linked: fire=%#v goal=%#v", store.fires[0], store.goals[0])
+	}
+}
+
+func TestTickCanRetryFireCreationAfterAtomicFailure(t *testing.T) {
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	seedGoal := domain.Goal{ID: "GOAL-SEED", Text: "seed", ProjectPath: "/tmp/project", Status: domain.GoalDraft, CreatedAt: now}
+	if err := st.SaveGoalDraft(context.Background(), seedGoal, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateFire(context.Background(), domain.Fire{
+		ID:          "FIRE-DUP",
+		LoopID:      "other-loop",
+		GoalID:      seedGoal.ID,
+		Status:      domain.FireScheduled,
+		ScheduledAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	first := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  st,
+		Clock:  fixedClock{now: now},
+		IDGenerator: func(prefix string, _ time.Time, _ string) string {
+			if prefix == "FIRE" {
+				return "FIRE-DUP"
+			}
+			return "GOAL-NEW"
+		},
+	})
+	if err := first.Tick(context.Background()); err == nil {
+		t.Fatal("first tick succeeded, want duplicate fire failure")
+	}
+
+	second := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  st,
+		Clock:  fixedClock{now: now},
+		IDGenerator: func(prefix string, _ time.Time, _ string) string {
+			if prefix == "FIRE" {
+				return "FIRE-OK"
+			}
+			return "GOAL-NEW"
+		},
+	})
+	if err := second.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fires, err := st.ListFires(context.Background(), "loop-a", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 1 || fires[0].ID != "FIRE-OK" || fires[0].GoalID != "GOAL-NEW" {
+		t.Fatalf("fires = %#v, want retry to create FIRE-OK linked to GOAL-NEW", fires)
 	}
 }
 

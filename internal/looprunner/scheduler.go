@@ -11,6 +11,7 @@ import (
 	"github.com/heruujoko/piramid/internal/cron"
 	"github.com/heruujoko/piramid/internal/definitions"
 	"github.com/heruujoko/piramid/internal/domain"
+	"github.com/heruujoko/piramid/internal/records"
 	storepkg "github.com/heruujoko/piramid/internal/store"
 )
 
@@ -28,7 +29,13 @@ type SchedulerStore interface {
 	SaveGoalDraft(context.Context, domain.Goal, storepkg.PersistedPaths) error
 }
 
+type DraftFireStore interface {
+	CreateDraftFire(context.Context, domain.Goal, storepkg.PersistedPaths, domain.Fire) error
+}
+
 type IDGenerator func(prefix string, now time.Time, loopID string) string
+
+type PlanGenerator func(domain.Loop, string, time.Time) domain.Plan
 
 type ErrorHandler func(error)
 
@@ -37,23 +44,27 @@ type Logger interface {
 }
 
 type Config struct {
-	Source       DefinitionsSource
-	Store        SchedulerStore
-	Clock        Clock
-	PollInterval time.Duration
-	IDGenerator  IDGenerator
-	OnError      ErrorHandler
-	Logger       Logger
+	Source        DefinitionsSource
+	Store         SchedulerStore
+	Clock         Clock
+	PollInterval  time.Duration
+	IDGenerator   IDGenerator
+	PlanGenerator PlanGenerator
+	Records       *records.Store
+	OnError       ErrorHandler
+	Logger        Logger
 }
 
 type Scheduler struct {
-	source       DefinitionsSource
-	store        SchedulerStore
-	clock        Clock
-	pollInterval time.Duration
-	idGenerator  IDGenerator
-	onError      ErrorHandler
-	logger       Logger
+	source        DefinitionsSource
+	store         SchedulerStore
+	clock         Clock
+	pollInterval  time.Duration
+	idGenerator   IDGenerator
+	planGenerator PlanGenerator
+	records       *records.Store
+	onError       ErrorHandler
+	logger        Logger
 }
 
 func NewScheduler(config Config) *Scheduler {
@@ -65,18 +76,24 @@ func NewScheduler(config Config) *Scheduler {
 	if idGenerator == nil {
 		idGenerator = defaultIDGenerator
 	}
+	planGenerator := config.PlanGenerator
+	if planGenerator == nil {
+		planGenerator = defaultPlanGenerator
+	}
 	pollInterval := config.PollInterval
 	if pollInterval <= 0 {
 		pollInterval = time.Minute
 	}
 	return &Scheduler{
-		source:       config.Source,
-		store:        config.Store,
-		clock:        clock,
-		pollInterval: pollInterval,
-		idGenerator:  idGenerator,
-		onError:      config.OnError,
-		logger:       config.Logger,
+		source:        config.Source,
+		store:         config.Store,
+		clock:         clock,
+		pollInterval:  pollInterval,
+		idGenerator:   idGenerator,
+		planGenerator: planGenerator,
+		records:       config.Records,
+		onError:       config.OnError,
+		logger:        config.Logger,
 	}
 }
 
@@ -144,7 +161,27 @@ func (s *Scheduler) tickLoop(ctx context.Context, loop domain.Loop, now time.Tim
 		Status:      domain.GoalDraft,
 		CreatedAt:   now,
 	}
-	if err := s.store.SaveGoalDraft(ctx, goal, storepkg.PersistedPaths{}); err != nil {
+	paths := storepkg.PersistedPaths{}
+	if s.records != nil {
+		goalRecord, err := s.records.WriteGoal(goal)
+		if err != nil {
+			return err
+		}
+		planRecord, err := s.records.WritePlan(goalID, s.planGenerator(loop, goalID, now))
+		if err != nil {
+			return err
+		}
+		paths.GoalPath = goalRecord.Path
+		paths.PlanPath = planRecord.Path
+	}
+	if draftFireStore, ok := s.store.(DraftFireStore); ok {
+		if err := draftFireStore.CreateDraftFire(ctx, goal, paths, fire); err != nil {
+			return err
+		}
+		s.logf("created fire")
+		return nil
+	}
+	if err := s.store.SaveGoalDraft(ctx, goal, paths); err != nil {
 		return err
 	}
 	if _, err := s.store.CreateFire(ctx, fire); err != nil {
@@ -181,6 +218,28 @@ func (s *Scheduler) logf(format string, args ...any) {
 }
 
 func defaultIDGenerator(prefix string, now time.Time, loopID string) string {
-	safeLoopID := strings.NewReplacer("/", "-", " ", "-", "_", "-").Replace(loopID)
+	safeLoopID := safeIdentifier(loopID)
 	return fmt.Sprintf("%s-%s-%s", prefix, safeLoopID, now.Format("20060102150405"))
+}
+
+func defaultPlanGenerator(loop domain.Loop, goalID string, now time.Time) domain.Plan {
+	taskID := defaultIDGenerator("TASK", now, loop.ID)
+	return domain.Plan{
+		Version: 1,
+		GoalID:  goalID,
+		Tasks: []domain.Task{{
+			ID:          taskID,
+			Title:       loop.Goal,
+			Goal:        loop.Goal,
+			ProjectPath: loop.ProjectPath,
+			DOD:         []string{"Loop goal is complete."},
+			MaxAttempts: 1,
+			Timeout:     time.Hour,
+			TimeoutText: time.Hour.String(),
+		}},
+	}
+}
+
+func safeIdentifier(value string) string {
+	return strings.NewReplacer("/", "-", " ", "-", "_", "-").Replace(value)
 }
