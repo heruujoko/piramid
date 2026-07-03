@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"time"
 
 	"github.com/heruujoko/piramid/internal/domain"
@@ -112,8 +113,6 @@ func (s *Store) ListFires(ctx context.Context, loopID string, limit int) ([]doma
 		query += " WHERE loop_id = ?"
 		args = append(args, loopID)
 	}
-	query += " ORDER BY scheduled_at DESC, id DESC LIMIT ?"
-	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -129,19 +128,34 @@ func (s *Store) ListFires(ctx context.Context, loopID string, limit int) ([]doma
 		}
 		fires = append(fires, fire)
 	}
-	return fires, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sortFiresByLatestScheduled(fires)
+	if len(fires) > limit {
+		fires = fires[:limit]
+	}
+	return fires, nil
 }
 
 func (s *Store) GetLatestFireByLoop(ctx context.Context, loopID string) (domain.Fire, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, loop_id, goal_id, status, scheduled_at, started_at, finished_at,
-		       last_error, created_at, updated_at
-		FROM fires
-		WHERE loop_id = ?
-		ORDER BY scheduled_at DESC, id DESC
-		LIMIT 1
-	`, loopID)
-	return scanFire(row)
+	fires, err := s.ListFires(ctx, loopID, 1)
+	if err != nil {
+		return domain.Fire{}, err
+	}
+	if len(fires) == 0 {
+		return domain.Fire{}, sql.ErrNoRows
+	}
+	return fires[0], nil
+}
+
+func sortFiresByLatestScheduled(fires []domain.Fire) {
+	sort.Slice(fires, func(i, j int) bool {
+		if fires[i].ScheduledAt.Equal(fires[j].ScheduledAt) {
+			return fires[i].ID > fires[j].ID
+		}
+		return fires[i].ScheduledAt.After(fires[j].ScheduledAt)
+	})
 }
 
 type scanner interface {

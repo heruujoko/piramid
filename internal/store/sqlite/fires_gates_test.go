@@ -183,6 +183,34 @@ func TestGetLatestFireByLoopReturnsMostRecentlyScheduled(t *testing.T) {
 	}
 }
 
+func TestGetLatestFireByLoopOrdersVariableWidthRFC3339NanoTimestamps(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	if _, err := st.CreateFire(ctx, testFire("FIRE-OLDER", "loop-a", base)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateFire(ctx, testFire("FIRE-LATEST", "loop-a", base.Add(time.Nanosecond))); err != nil {
+		t.Fatal(err)
+	}
+
+	latest, err := st.GetLatestFireByLoop(ctx, "loop-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != "FIRE-LATEST" {
+		t.Fatalf("latest = %s, want FIRE-LATEST", latest.ID)
+	}
+
+	fires, err := st.ListFires(ctx, "loop-a", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 2 || fires[0].ID != "FIRE-LATEST" || fires[1].ID != "FIRE-OLDER" {
+		t.Fatalf("fires = %#v, want latest before older", fires)
+	}
+}
+
 func TestGetLatestFireByLoopUnknownReturnsNotFound(t *testing.T) {
 	st := openTestStore(t)
 	_, err := st.GetLatestFireByLoop(context.Background(), "nope")
