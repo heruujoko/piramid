@@ -44,7 +44,9 @@ func ParseContext(content string) (domain.GateContext, error) {
 // splitFrontMatter splits content into front-matter YAML and body.
 // Returns (frontMatter, body, ok). The first "---" line starts the
 // front-matter, the second "---" line ends it. Everything after is body.
+// Line endings are normalized to LF before parsing.
 func splitFrontMatter(content string) (string, string, bool) {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, frontMatterOpen) {
 		return "", "", false

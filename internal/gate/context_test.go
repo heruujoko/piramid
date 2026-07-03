@@ -163,6 +163,20 @@ decision_options:
 	}
 }
 
+func TestParseContextAcceptsCRLFLineEndings(t *testing.T) {
+	content := "---\r\ngate: review\r\nphase: pre-execution\r\nloop_id: loop-1\r\nfire_id: fire-1\r\nsummary: Review\r\ndecision_options:\r\n  - approve\r\n---\r\nBody text\r\n"
+	gc, err := ParseContext(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gc.Gate != "review" {
+		t.Fatalf("gate = %q, want review", gc.Gate)
+	}
+	if gc.Body != "Body text" {
+		t.Fatalf("body = %q, want 'Body text'", gc.Body)
+	}
+}
+
 func TestParseContextAllowsOptionalFields(t *testing.T) {
 	content := `---
 gate: review
