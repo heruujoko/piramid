@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -14,18 +15,21 @@ import (
 	"github.com/heruujoko/piramid/internal/api"
 	"github.com/heruujoko/piramid/internal/app"
 	"github.com/heruujoko/piramid/internal/config"
+	"github.com/heruujoko/piramid/internal/definitions"
 	"github.com/heruujoko/piramid/internal/engine"
 	"github.com/heruujoko/piramid/internal/home"
 	"github.com/heruujoko/piramid/internal/intake"
+	"github.com/heruujoko/piramid/internal/looprunner"
 	"github.com/heruujoko/piramid/internal/records"
 	runtimepkg "github.com/heruujoko/piramid/internal/runtime"
 	sqlitestore "github.com/heruujoko/piramid/internal/store/sqlite"
 )
 
 type Options struct {
-	Paths home.Paths
-	Host  string
-	Port  *int
+	Paths           home.Paths
+	Host            string
+	Port            *int
+	DefinitionsRoot string
 }
 
 type Running struct {
@@ -138,6 +142,28 @@ func Start(ctx context.Context, options Options) (*Running, error) {
 		defer running.wg.Done()
 		_ = running.server.Serve(listener)
 	}()
+
+	definitionsRoot := cfg.Loops.DefinitionRoot
+	if options.DefinitionsRoot != "" {
+		definitionsRoot = options.DefinitionsRoot
+	}
+	if definitionsRoot != "" {
+		loopScheduler := looprunner.NewScheduler(looprunner.Config{
+			Source:  &definitionsSource{root: definitionsRoot},
+			Store:   st,
+			Records: recordStore,
+			OnError: func(err error) {
+				log.Printf("loop scheduler error: %v", err)
+			},
+			Logger: &stdLogger{},
+		})
+		running.wg.Add(1)
+		go func() {
+			defer running.wg.Done()
+			_ = loopScheduler.Run(runCtx)
+		}()
+	}
+
 	return running, nil
 }
 
@@ -168,4 +194,25 @@ func roleRuntime(runtime config.RuntimeConfig) engine.RoleRuntime {
 		Command: runtime.Command, Args: runtime.Args,
 		Environment: os.Environ(), Timeout: time.Duration(runtime.Timeout),
 	}
+}
+
+type definitionsSource struct {
+	root string
+}
+
+func (s *definitionsSource) Load(ctx context.Context) (definitions.Snapshot, error) {
+	// definitions.LoadRoot performs synchronous filesystem reads (os.Stat,
+	// os.ReadDir) and does not accept a context. Honor cancellation at the
+	// boundary so a shutdown between scheduler ticks short-circuits the load
+	// instead of starting fresh disk I/O.
+	if err := ctx.Err(); err != nil {
+		return definitions.Snapshot{}, err
+	}
+	return definitions.LoadRoot(s.root)
+}
+
+type stdLogger struct{}
+
+func (l *stdLogger) Printf(format string, args ...any) {
+	log.Printf(format, args...)
 }

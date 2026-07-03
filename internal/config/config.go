@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ type Config struct {
 	Workers WorkersConfig  `yaml:"workers"`
 	Runtime RuntimeConfigs `yaml:"runtime"`
 	Retry   RetryConfig    `yaml:"retry"`
+	Loops   LoopsConfig    `yaml:"loops"`
 }
 
 type ServerConfig struct {
@@ -63,6 +65,10 @@ type RuntimeConfig struct {
 	Command string   `yaml:"command"`
 	Args    []string `yaml:"args"`
 	Timeout Duration `yaml:"timeout"`
+}
+
+type LoopsConfig struct {
+	DefinitionRoot string `yaml:"definition_root"`
 }
 
 type RetryConfig struct {
@@ -211,6 +217,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Retry.Backoff != "exponential" {
 		return fmt.Errorf("retry.backoff: must be exponential")
+	}
+	if cfg.Loops.DefinitionRoot != "" && !filepath.IsAbs(cfg.Loops.DefinitionRoot) {
+		return fmt.Errorf("loops.definition_root: must be an absolute path")
 	}
 	return nil
 }

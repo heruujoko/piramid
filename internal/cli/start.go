@@ -29,10 +29,11 @@ var executablePath = os.Executable
 
 func newStartCommand() *cobra.Command {
 	var (
-		background     bool
-		host           string
-		port           int
-		internalDaemon bool
+		background      bool
+		host            string
+		port            int
+		definitionsRoot string
+		internalDaemon  bool
 	)
 	command := &cobra.Command{
 		Use:   "start",
@@ -46,11 +47,11 @@ func newStartCommand() *cobra.Command {
 				)
 			}
 			if background && !internalDaemon {
-				return launchBackground(cmd, host, port)
+				return launchBackground(cmd, host, port, definitionsRoot)
 			}
 			portCopy := port
 			running, err := startEngine(cmd.Context(), bootstrap.Options{
-				Host: host, Port: &portCopy,
+				Host: host, Port: &portCopy, DefinitionsRoot: definitionsRoot,
 			})
 			if err != nil {
 				return err
@@ -81,12 +82,13 @@ func newStartCommand() *cobra.Command {
 	command.Flags().BoolVar(&background, "d", false, "run in the background")
 	command.Flags().StringVar(&host, "s", "127.0.0.1", "server host")
 	command.Flags().IntVar(&port, "p", 7433, "server port")
+	command.Flags().StringVar(&definitionsRoot, "definitions", "", "loop definitions root directory")
 	command.Flags().BoolVar(&internalDaemon, "internal-daemon", false, "internal daemon child")
 	_ = command.Flags().MarkHidden("internal-daemon")
 	return command
 }
 
-func launchBackground(cmd *cobra.Command, host string, port int) error {
+func launchBackground(cmd *cobra.Command, host string, port int, definitionsRoot string) error {
 	paths, err := home.Resolve()
 	if err != nil {
 		return err
@@ -104,9 +106,15 @@ func launchBackground(cmd *cobra.Command, host string, port int) error {
 	}
 	pid, err := launchDaemon(daemon.LaunchOptions{
 		Executable: executable,
-		Args: []string{
-			"start", "--s", host, "--p", strconv.Itoa(port), "--internal-daemon",
-		},
+		Args: func() []string {
+			args := []string{
+				"start", "--s", host, "--p", strconv.Itoa(port), "--internal-daemon",
+			}
+			if definitionsRoot != "" {
+				args = append(args, "--definitions", definitionsRoot)
+			}
+			return args
+		}(),
 		StdoutPath: filepath.Join(paths.Runtime, "daemon.stdout.log"),
 		StderrPath: filepath.Join(paths.Runtime, "daemon.stderr.log"),
 		Host:       dialHost,
