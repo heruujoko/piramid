@@ -167,6 +167,32 @@ func TestTickCreatesFireAndDraftGoalWhenLoopIsDue(t *testing.T) {
 	}
 }
 
+func TestTickGeneratesDistinctIDsForSimilarLoopIDs(t *testing.T) {
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	store := &fakeStore{latestErr: sql.ErrNoRows}
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{
+			testLoop("a_b", true, "0 9 * * *"),
+			testLoop("a-b", true, "0 9 * * *"),
+		}}},
+		Store: store,
+		Clock: fixedClock{now: now},
+	})
+
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.fires) != 2 || len(store.goals) != 2 {
+		t.Fatalf("fires=%#v goals=%#v, want one of each per loop", store.fires, store.goals)
+	}
+	if store.fires[0].ID == store.fires[1].ID {
+		t.Fatalf("fire IDs collided: %q", store.fires[0].ID)
+	}
+	if store.goals[0].ID == store.goals[1].ID {
+		t.Fatalf("goal IDs collided: %q", store.goals[0].ID)
+	}
+}
+
 func TestTickCanRetryFireCreationAfterAtomicFailure(t *testing.T) {
 	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
@@ -406,6 +432,7 @@ func (l *captureLogger) requireContains(t *testing.T, want string) {
 
 type fakeStore struct {
 	latest          domain.Fire
+	latestByLoop    map[string]domain.Fire
 	latestErr       error
 	latestErrByLoop map[string]error
 	fires           []domain.Fire
@@ -418,11 +445,21 @@ func (s *fakeStore) GetLatestFireByLoop(_ context.Context, loopID string) (domai
 	if err, ok := s.latestErrByLoop[loopID]; ok {
 		return domain.Fire{}, err
 	}
+	if s.latestByLoop != nil {
+		if fire, ok := s.latestByLoop[loopID]; ok {
+			return fire, nil
+		}
+		return domain.Fire{}, sql.ErrNoRows
+	}
 	return s.latest, s.latestErr
 }
 
 func (s *fakeStore) CreateFire(_ context.Context, fire domain.Fire) (domain.Fire, error) {
 	s.fires = append(s.fires, fire)
+	if s.latestByLoop == nil {
+		s.latestByLoop = make(map[string]domain.Fire)
+	}
+	s.latestByLoop[fire.LoopID] = fire
 	s.latest = fire
 	s.latestErr = nil
 	if s.onCreateFire != nil {

@@ -3,9 +3,9 @@ package looprunner
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/heruujoko/piramid/internal/cron"
@@ -241,5 +241,5 @@ func defaultPlanGenerator(loop domain.Loop, goalID string, now time.Time) domain
 }
 
 func safeIdentifier(value string) string {
-	return strings.NewReplacer("/", "-", " ", "-", "_", "-").Replace(value)
+	return hex.EncodeToString([]byte(value))
 }
