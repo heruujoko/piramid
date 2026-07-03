@@ -38,6 +38,15 @@ func resultByName(results []Result, name string) Result {
 	return Result{}
 }
 
+func TestDoctorAcceptsCurrentSchemaVersion(t *testing.T) {
+	paths := initializedDoctorHome(t)
+	d := New(Options{Paths: paths})
+	result := d.checkSchema(context.Background())
+	if result.Status != Pass {
+		t.Fatalf("schema result = %#v, want pass", result)
+	}
+}
+
 func TestDoctorReportsMissingNodeAndPiWithRemediation(t *testing.T) {
 	paths := initializedDoctorHome(t)
 	d := New(Options{
