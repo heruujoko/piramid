@@ -200,7 +200,14 @@ type definitionsSource struct {
 	root string
 }
 
-func (s *definitionsSource) Load(_ context.Context) (definitions.Snapshot, error) {
+func (s *definitionsSource) Load(ctx context.Context) (definitions.Snapshot, error) {
+	// definitions.LoadRoot performs synchronous filesystem reads (os.Stat,
+	// os.ReadDir) and does not accept a context. Honor cancellation at the
+	// boundary so a shutdown between scheduler ticks short-circuits the load
+	// instead of starting fresh disk I/O.
+	if err := ctx.Err(); err != nil {
+		return definitions.Snapshot{}, err
+	}
 	return definitions.LoadRoot(s.root)
 }
 
