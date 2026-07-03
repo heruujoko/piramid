@@ -4,13 +4,91 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/heruujoko/piramid/internal/definitions"
 	"github.com/heruujoko/piramid/internal/domain"
 	storepkg "github.com/heruujoko/piramid/internal/store"
+	"github.com/heruujoko/piramid/internal/store/sqlite"
 )
+
+func TestTickLogsLifecycleAndFireCreation(t *testing.T) {
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	logger := &captureLogger{}
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  &fakeStore{latestErr: sql.ErrNoRows},
+		Clock:  fixedClock{now: now},
+		Logger: logger,
+	})
+
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	logger.requireContains(t, "loop scheduler tick started")
+	logger.requireContains(t, "created fire")
+	logger.requireContains(t, "loop scheduler tick completed")
+}
+
+func TestTickLogsDefinitionLoadFailures(t *testing.T) {
+	logger := &captureLogger{}
+	loadErr := errors.New("bad definitions")
+	scheduler := NewScheduler(Config{
+		Source: staticSource{err: loadErr},
+		Store:  &fakeStore{},
+		Clock:  fixedClock{now: time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)},
+		Logger: logger,
+	})
+
+	if err := scheduler.Tick(context.Background()); !errors.Is(err, loadErr) {
+		t.Fatalf("err = %v, want %v", err, loadErr)
+	}
+	logger.requireContains(t, "failed to load loop definitions")
+}
+
+func TestTickLogsStoreErrors(t *testing.T) {
+	logger := &captureLogger{}
+	storeErr := errors.New("store unavailable")
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  &fakeStore{latestErr: sql.ErrNoRows, saveErr: storeErr},
+		Clock:  fixedClock{now: time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)},
+		Logger: logger,
+	})
+
+	if err := scheduler.Tick(context.Background()); !errors.Is(err, storeErr) {
+		t.Fatalf("err = %v, want %v", err, storeErr)
+	}
+	logger.requireContains(t, "loop tick failed")
+}
+
+func TestTickPersistsDueLoopWithSQLiteForeignKeys(t *testing.T) {
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  st,
+		Clock:  fixedClock{now: now},
+	})
+
+	if err := scheduler.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fires, err := st.ListFires(context.Background(), "loop-a", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 1 || fires[0].GoalID == "" {
+		t.Fatalf("fires = %#v, want one linked fire", fires)
+	}
+}
 
 func TestTickCreatesFireAndDraftGoalWhenLoopIsDue(t *testing.T) {
 	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
@@ -51,6 +129,31 @@ func TestTickCreatesFireAndDraftGoalWhenLoopIsDue(t *testing.T) {
 	}
 }
 
+func TestTickContinuesAfterSingleLoopError(t *testing.T) {
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	storeErr := errors.New("loop-a latest failed")
+	store := &fakeStore{
+		latestErr:       sql.ErrNoRows,
+		latestErrByLoop: map[string]error{"loop-a": storeErr},
+	}
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{
+			testLoop("loop-a", true, "0 9 * * *"),
+			testLoop("loop-b", true, "0 9 * * *"),
+		}}},
+		Store: store,
+		Clock: fixedClock{now: now},
+	})
+
+	err := scheduler.Tick(context.Background())
+	if !errors.Is(err, storeErr) {
+		t.Fatalf("err = %v, want %v", err, storeErr)
+	}
+	if len(store.fires) != 1 || store.fires[0].LoopID != "loop-b" {
+		t.Fatalf("fires = %#v, want loop-b to fire despite loop-a error", store.fires)
+	}
+}
+
 func TestTickSkipsInactiveLoops(t *testing.T) {
 	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
 	store := &fakeStore{latestErr: sql.ErrNoRows}
@@ -88,6 +191,29 @@ func TestTickDoesNotDuplicateFireForSameScheduledMinute(t *testing.T) {
 	}
 	if len(store.goals) != 1 {
 		t.Fatalf("goals = %#v, want one", store.goals)
+	}
+}
+
+func TestRunReportsTickErrors(t *testing.T) {
+	now := time.Date(2026, 7, 3, 9, 0, 0, 0, time.UTC)
+	ctx, cancel := context.WithCancel(context.Background())
+	storeErr := errors.New("store unavailable")
+	var reported []error
+	scheduler := NewScheduler(Config{
+		Source: staticSource{snapshot: definitions.Snapshot{Loops: []domain.Loop{testLoop("loop-a", true, "0 9 * * *")}}},
+		Store:  &fakeStore{latestErr: sql.ErrNoRows, saveErr: storeErr},
+		Clock:  fixedClock{now: now},
+		OnError: func(err error) {
+			reported = append(reported, err)
+			cancel()
+		},
+	})
+
+	if err := scheduler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if len(reported) != 1 || !errors.Is(reported[0], storeErr) {
+		t.Fatalf("reported errors = %#v, want %v", reported, storeErr)
 	}
 }
 
@@ -160,15 +286,38 @@ type fixedClock struct{ now time.Time }
 
 func (c fixedClock) Now() time.Time { return c.now }
 
-type fakeStore struct {
-	latest       domain.Fire
-	latestErr    error
-	fires        []domain.Fire
-	goals        []domain.Goal
-	onCreateFire func()
+type captureLogger struct {
+	messages []string
 }
 
-func (s *fakeStore) GetLatestFireByLoop(context.Context, string) (domain.Fire, error) {
+func (l *captureLogger) Printf(format string, args ...any) {
+	l.messages = append(l.messages, format)
+}
+
+func (l *captureLogger) requireContains(t *testing.T, want string) {
+	t.Helper()
+	for _, message := range l.messages {
+		if message == want {
+			return
+		}
+	}
+	t.Fatalf("logs = %#v, want message %q", l.messages, want)
+}
+
+type fakeStore struct {
+	latest          domain.Fire
+	latestErr       error
+	latestErrByLoop map[string]error
+	fires           []domain.Fire
+	goals           []domain.Goal
+	saveErr         error
+	onCreateFire    func()
+}
+
+func (s *fakeStore) GetLatestFireByLoop(_ context.Context, loopID string) (domain.Fire, error) {
+	if err, ok := s.latestErrByLoop[loopID]; ok {
+		return domain.Fire{}, err
+	}
 	return s.latest, s.latestErr
 }
 
@@ -183,6 +332,9 @@ func (s *fakeStore) CreateFire(_ context.Context, fire domain.Fire) (domain.Fire
 }
 
 func (s *fakeStore) SaveGoalDraft(_ context.Context, goal domain.Goal, _ storepkg.PersistedPaths) error {
+	if s.saveErr != nil {
+		return s.saveErr
+	}
 	s.goals = append(s.goals, goal)
 	return nil
 }

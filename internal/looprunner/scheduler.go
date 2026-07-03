@@ -3,6 +3,7 @@ package looprunner
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,12 +30,20 @@ type SchedulerStore interface {
 
 type IDGenerator func(prefix string, now time.Time, loopID string) string
 
+type ErrorHandler func(error)
+
+type Logger interface {
+	Printf(string, ...any)
+}
+
 type Config struct {
 	Source       DefinitionsSource
 	Store        SchedulerStore
 	Clock        Clock
 	PollInterval time.Duration
 	IDGenerator  IDGenerator
+	OnError      ErrorHandler
+	Logger       Logger
 }
 
 type Scheduler struct {
@@ -43,6 +52,8 @@ type Scheduler struct {
 	clock        Clock
 	pollInterval time.Duration
 	idGenerator  IDGenerator
+	onError      ErrorHandler
+	logger       Logger
 }
 
 func NewScheduler(config Config) *Scheduler {
@@ -64,12 +75,16 @@ func NewScheduler(config Config) *Scheduler {
 		clock:        clock,
 		pollInterval: pollInterval,
 		idGenerator:  idGenerator,
+		onError:      config.OnError,
+		logger:       config.Logger,
 	}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
 	for {
-		_ = s.Tick(ctx)
+		if err := s.Tick(ctx); err != nil && s.onError != nil {
+			s.onError(err)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -79,48 +94,63 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 func (s *Scheduler) Tick(ctx context.Context) error {
+	s.logf("loop scheduler tick started")
 	snapshot, err := s.source.Load(ctx)
 	if err != nil {
+		s.logf("failed to load loop definitions")
 		return err
 	}
 	now := s.clock.Now().UTC().Truncate(time.Minute)
+	var tickErr error
 	for _, loop := range snapshot.Loops {
 		if !loop.Active {
 			continue
 		}
-		due, err := s.loopDue(ctx, loop, now)
-		if err != nil {
-			return err
-		}
-		if !due {
-			continue
-		}
-		goalID := s.idGenerator("GOAL", now, loop.ID)
-		fireID := s.idGenerator("FIRE", now, loop.ID)
-		fire := domain.Fire{
-			ID:          fireID,
-			LoopID:      loop.ID,
-			GoalID:      goalID,
-			Status:      domain.FireScheduled,
-			ScheduledAt: now,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		goal := domain.Goal{
-			ID:          goalID,
-			FireID:      fireID,
-			Text:        loop.Goal,
-			ProjectPath: loop.ProjectPath,
-			Status:      domain.GoalDraft,
-			CreatedAt:   now,
-		}
-		if _, err := s.store.CreateFire(ctx, fire); err != nil {
-			return err
-		}
-		if err := s.store.SaveGoalDraft(ctx, goal, storepkg.PersistedPaths{}); err != nil {
-			return err
+		if err := s.tickLoop(ctx, loop, now); err != nil {
+			s.logf("loop tick failed")
+			tickErr = errors.Join(tickErr, err)
 		}
 	}
+	if tickErr == nil {
+		s.logf("loop scheduler tick completed")
+	}
+	return tickErr
+}
+
+func (s *Scheduler) tickLoop(ctx context.Context, loop domain.Loop, now time.Time) error {
+	due, err := s.loopDue(ctx, loop, now)
+	if err != nil {
+		return err
+	}
+	if !due {
+		return nil
+	}
+	goalID := s.idGenerator("GOAL", now, loop.ID)
+	fireID := s.idGenerator("FIRE", now, loop.ID)
+	fire := domain.Fire{
+		ID:          fireID,
+		LoopID:      loop.ID,
+		GoalID:      goalID,
+		Status:      domain.FireScheduled,
+		ScheduledAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	goal := domain.Goal{
+		ID:          goalID,
+		FireID:      fireID,
+		Text:        loop.Goal,
+		ProjectPath: loop.ProjectPath,
+		Status:      domain.GoalDraft,
+		CreatedAt:   now,
+	}
+	if err := s.store.SaveGoalDraft(ctx, goal, storepkg.PersistedPaths{}); err != nil {
+		return err
+	}
+	if _, err := s.store.CreateFire(ctx, fire); err != nil {
+		return err
+	}
+	s.logf("created fire")
 	return nil
 }
 
@@ -143,6 +173,12 @@ func (s *Scheduler) loopDue(ctx context.Context, loop domain.Loop, now time.Time
 type systemClock struct{}
 
 func (systemClock) Now() time.Time { return time.Now().UTC() }
+
+func (s *Scheduler) logf(format string, args ...any) {
+	if s.logger != nil {
+		s.logger.Printf(format, args...)
+	}
+}
 
 func defaultIDGenerator(prefix string, now time.Time, loopID string) string {
 	safeLoopID := strings.NewReplacer("/", "-", " ", "-", "_", "-").Replace(loopID)
