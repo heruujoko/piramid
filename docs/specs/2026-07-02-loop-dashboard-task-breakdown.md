@@ -311,22 +311,23 @@
 
 ### Steps
 
-- [ ] Define scheduler config: definitions source, store, clock, poll interval.
-- [ ] On each tick, list active loops.
-- [ ] Determine due loops using cron + last fire state.
-- [ ] Create Fire row for each due loop.
-- [ ] Create linked Goal in DRAFT.
-- [ ] Decide Phase-1 pre-execution behavior:
+- [x] Define scheduler config: definitions source, store, clock, poll interval. (`internal/looprunner.Scheduler`)
+- [x] On each tick, list active loops.
+- [x] Determine due loops using cron + last fire state.
+- [x] Create Fire row for each due loop.
+- [x] Create linked Goal in DRAFT.
+- [x] Decide Phase-1 pre-execution behavior:
   - [ ] either auto-confirm configured loops for demo, or
   - [ ] create a pre-execution gate requiring explicit confirmation.
-- [ ] Emit `fire.created` / `fire.started` as appropriate.
+  - Decision: create a linked DRAFT goal and leave existing human confirmation flow in control; do not auto-confirm or create a gate in T-031.
+- [x] Emit `fire.created` / `fire.started` as appropriate. (`CreateFire` emits existing `FIRE_CREATED`; scheduler does not mark fire started.)
 
 ### Acceptance checklist
 
-- [ ] Fake clock test creates one fire when due.
-- [ ] Re-running same tick does not duplicate fire.
-- [ ] Inactive loop does not fire.
-- [ ] Invalid definitions snapshot prevents scheduling but keeps daemon alive.
+- [x] Fake clock test creates one fire when due.
+- [x] Re-running same tick does not duplicate fire.
+- [x] Inactive loop does not fire.
+- [x] Invalid definitions snapshot prevents scheduling but keeps daemon alive.
 
 ## T-032 — Wire loop scheduler into daemon/bootstrap
 
