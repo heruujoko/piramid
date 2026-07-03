@@ -46,6 +46,27 @@ func TestStartCommandUsesDefaultAddressInForeground(t *testing.T) {
 	}
 }
 
+func TestStartCommandPassesDefinitionsFlagToBootstrap(t *testing.T) {
+	original := startEngine
+	t.Cleanup(func() { startEngine = original })
+	var captured bootstrap.Options
+	startEngine = func(_ context.Context, options bootstrap.Options) (runningEngine, error) {
+		captured = options
+		return &fakeRunningEngine{}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	command := newStartCommand()
+	command.SetContext(ctx)
+	command.SetArgs([]string{"--definitions", "/custom/defs"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if captured.DefinitionsRoot != "/custom/defs" {
+		t.Fatalf("DefinitionsRoot = %q, want /custom/defs", captured.DefinitionsRoot)
+	}
+}
+
 func TestStartCommandWarnsForNonLoopbackBinding(t *testing.T) {
 	original := startEngine
 	t.Cleanup(func() { startEngine = original })

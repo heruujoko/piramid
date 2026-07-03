@@ -34,7 +34,7 @@
 - [x] M0 Baseline
 - [x] M1 Definitions
 - [x] M2 Runtime state
-- [ ] M3 Loop scheduler
+- [x] M3 Loop scheduler
 - [ ] M4 Mid-run gate
 - [ ] M5 Resume
 - [ ] M6 API
@@ -337,16 +337,16 @@
 
 ### Steps
 
-- [ ] Instantiate definitions service.
-- [ ] Instantiate loop scheduler alongside existing task scheduler.
-- [ ] Start/stop loop scheduler with daemon context.
-- [ ] Log definition load failures and scheduler errors.
+- [x] Instantiate definitions service.
+- [x] Instantiate loop scheduler alongside existing task scheduler.
+- [x] Start/stop loop scheduler with daemon context.
+- [x] Log definition load failures and scheduler errors.
 
 ### Acceptance checklist
 
-- [ ] `piramid start` starts both schedulers.
-- [ ] Canceling context stops both cleanly.
-- [ ] Existing task scheduler behavior still works.
+- [x] `piramid start` starts both schedulers.
+- [x] Canceling context stops both cleanly.
+- [x] Existing task scheduler behavior still works.
 
 ---
 
@@ -579,14 +579,14 @@
 
 ### Steps
 
-- [ ] Add `definition_root` config field or nested `loops.definition_root`.
-- [ ] Default to `$PIRAMID_HOME/definitions`.
-- [ ] Validate path is absolute after resolution.
+- [x] Add `definition_root` config field or nested `loops.definition_root`.
+- [x] Default to `$PIRAMID_HOME/definitions`.
+- [x] Validate path is absolute after resolution.
 
 ### Acceptance checklist
 
-- [ ] Config parser accepts field.
-- [ ] Default path is deterministic.
+- [x] Config parser accepts field.
+- [x] Default path is deterministic.
 
 ## T-071 — Add CLI start flag
 
@@ -596,14 +596,14 @@
 
 ### Steps
 
-- [ ] Add `--definitions <path>`.
-- [ ] CLI flag overrides config file.
-- [ ] Bootstrap receives resolved root.
+- [x] Add `--definitions <path>`.
+- [x] CLI flag overrides config file.
+- [x] Bootstrap receives resolved root.
 
 ### Acceptance checklist
 
-- [ ] CLI test covers flag.
-- [ ] Start command passes root to bootstrap.
+- [x] CLI test covers flag.
+- [x] Start command passes root to bootstrap.
 
 ## T-072 — Implement safe reload/watch
 

@@ -99,3 +99,66 @@ runtime:
 		t.Fatalf("executor timeout = %s", cfg.Runtime.Executor.Timeout)
 	}
 }
+
+func TestLoopsDefinitionRootDefaultsEmpty(t *testing.T) {
+	cfg := Default()
+	if cfg.Loops.DefinitionRoot != "" {
+		t.Fatalf("Loops.DefinitionRoot = %q, want empty", cfg.Loops.DefinitionRoot)
+	}
+}
+
+func TestLoopsDefinitionRootRejectsRelativePath(t *testing.T) {
+	cfg := Default()
+	cfg.Loops.DefinitionRoot = "relative/path"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "loops.definition_root") {
+		t.Fatalf("Validate() error = %v, want loops.definition_root", err)
+	}
+}
+
+func TestLoopsDefinitionRootAcceptsAbsolutePath(t *testing.T) {
+	cfg := Default()
+	cfg.Loops.DefinitionRoot = "/absolute/path"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadParsesLoopsDefinitionRoot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `version: 1
+server:
+  host: 127.0.0.1
+  port: 7433
+workers:
+  count: 2
+runtime:
+  planner:
+    adapter: pi-cli
+    command: pi
+    args: ["-p", "{{prompt}}"]
+    timeout: 30m
+  executor:
+    adapter: command
+    command: fixture
+    args: ["{{prompt_file}}", "{{workspace}}"]
+    timeout: 4h
+  verifier:
+    adapter: pi-cli
+    command: pi
+    args: ["-p", "{{prompt}}"]
+    timeout: 1h
+loops:
+  definition_root: /custom/definitions
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Loops.DefinitionRoot != "/custom/definitions" {
+		t.Fatalf("Loops.DefinitionRoot = %q, want /custom/definitions", cfg.Loops.DefinitionRoot)
+	}
+}
