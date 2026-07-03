@@ -73,7 +73,9 @@ func yamlFiles(dir string) ([]string, error) {
 		}
 		ext := filepath.Ext(entry.Name())
 		if ext != ".yaml" && ext != ".yml" {
-			return nil, fmt.Errorf("%s: definition files must use .yaml or .yml", filepath.Join(dir, entry.Name()))
+			// Skip non-YAML files (e.g. README.md, .gitkeep) so a definition
+			// directory can hold documentation or placeholders without failing.
+			continue
 		}
 		paths = append(paths, filepath.Join(dir, entry.Name()))
 	}

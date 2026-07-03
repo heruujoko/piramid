@@ -43,6 +43,20 @@ func TestLoadRootAllowsEmptyDirectories(t *testing.T) {
 	}
 }
 
+func TestLoadRootSkipsNonYAMLFiles(t *testing.T) {
+	root := validRoot(t)
+	writeFile(t, filepath.Join(root, "patterns", "README.md"), "# patterns\n")
+	writeFile(t, filepath.Join(root, "loops", ".gitkeep"), "")
+
+	snapshot, err := LoadRoot(root)
+	if err != nil {
+		t.Fatalf("LoadRoot() error = %v", err)
+	}
+	if len(snapshot.Patterns) != 1 || len(snapshot.Loops) != 1 {
+		t.Fatalf("snapshot = %d patterns, %d loops; want 1 and 1", len(snapshot.Patterns), len(snapshot.Loops))
+	}
+}
+
 func TestLoadRootRejectsMissingRoot(t *testing.T) {
 	_, err := LoadRoot(filepath.Join(t.TempDir(), "missing"))
 	if err == nil || !strings.Contains(err.Error(), "definitions root") {
@@ -60,6 +74,20 @@ func TestLoadRootRejectsInvalidDefinitions(t *testing.T) {
 			name: "bad pattern id",
 			mutate: func(t *testing.T, root string) {
 				writeFile(t, filepath.Join(root, "patterns", "post-merge-cleanup.yaml"), strings.Replace(validPatternYAML, "id: post-merge-cleanup", "id: PostMerge", 1))
+			},
+			contains: "pattern id",
+		},
+		{
+			name: "trailing hyphen pattern id",
+			mutate: func(t *testing.T, root string) {
+				writeFile(t, filepath.Join(root, "patterns", "post-merge-cleanup.yaml"), strings.Replace(validPatternYAML, "id: post-merge-cleanup", "id: post-merge-", 1))
+			},
+			contains: "pattern id",
+		},
+		{
+			name: "consecutive hyphen pattern id",
+			mutate: func(t *testing.T, root string) {
+				writeFile(t, filepath.Join(root, "patterns", "post-merge-cleanup.yaml"), strings.Replace(validPatternYAML, "id: post-merge-cleanup", "id: post--merge", 1))
 			},
 			contains: "pattern id",
 		},

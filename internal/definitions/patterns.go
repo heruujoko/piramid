@@ -10,7 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var patternIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+// patternIDRe enforces kebab-case ids: a leading lowercase letter, alphanumeric
+// segments, and hyphens only as separators (no trailing or consecutive hyphens).
+var patternIDRe = regexp.MustCompile(`^[a-z]([a-z0-9]*[a-z0-9])?(-[a-z0-9]+)*$`)
 
 func loadPatterns(dir string) ([]domain.Pattern, error) {
 	files, err := yamlFiles(dir)
@@ -42,7 +44,7 @@ func loadPatterns(dir string) ([]domain.Pattern, error) {
 
 func validatePattern(pattern domain.Pattern) error {
 	if !patternIDRe.MatchString(strings.TrimSpace(pattern.ID)) {
-		return fmt.Errorf("pattern id: must match ^[a-z][a-z0-9-]*$")
+		return fmt.Errorf("pattern id: must be kebab-case (^[a-z]([a-z0-9]*[a-z0-9])?(-[a-z0-9]+)*$)")
 	}
 	if len(strings.TrimSpace(pattern.Name)) < 3 {
 		return fmt.Errorf("pattern %s name: must be at least 3 characters", pattern.ID)
