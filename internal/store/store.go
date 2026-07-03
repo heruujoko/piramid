@@ -120,4 +120,19 @@ type Store interface {
 	CancelTask(context.Context, string, time.Time) error
 	GetAttemptLogPaths(context.Context, int64) (AttemptLogPaths, error)
 	ListEvents(context.Context, int64, int) ([]Event, error)
+	CreateFire(context.Context, domain.Fire) (domain.Fire, error)
+	UpdateFireStatus(context.Context, string, domain.FireStatus, time.Time) error
+	ListFires(context.Context, string, int) ([]domain.Fire, error)
+	GetLatestFireByLoop(context.Context, string) (domain.Fire, error)
+	CreateGate(context.Context, domain.Gate) (domain.Gate, error)
+	GetGate(context.Context, string) (domain.Gate, error)
+	ListOpenGates(context.Context) ([]domain.Gate, error)
+	ResolveGate(context.Context, ResolveGateInput) error
+}
+
+type ResolveGateInput struct {
+	ID       string
+	Decision domain.GateDecision
+	Note     string
+	Now      time.Time
 }
