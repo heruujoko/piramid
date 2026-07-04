@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/heruujoko/piramid/internal/domain"
+	"github.com/heruujoko/piramid/internal/gate"
 	"github.com/heruujoko/piramid/internal/prompt"
 	"github.com/heruujoko/piramid/internal/records"
 	runtimepkg "github.com/heruujoko/piramid/internal/runtime"
@@ -29,6 +30,8 @@ type RunnerStore interface {
 	MoveToVerification(context.Context, storepkg.FinishExecutionInput) error
 	FinishVerification(context.Context, storepkg.FinishVerificationInput) error
 	RecordOperationalFailure(context.Context, storepkg.OperationalFailureInput) error
+	CreateGate(context.Context, domain.Gate) (domain.Gate, error)
+	UpdateFireStatus(context.Context, string, domain.FireStatus, time.Time) error
 }
 
 type RoleRuntime struct {
@@ -37,6 +40,10 @@ type RoleRuntime struct {
 	Environment []string
 	Timeout     time.Duration
 }
+
+// GateExitCode is the exit code an executor uses to signal a mid-run gate.
+// The runner intercepts it before verification and opens a gate row instead.
+const GateExitCode = 42
 
 type RunnerConfig struct {
 	Store           RunnerStore
@@ -47,6 +54,7 @@ type RunnerConfig struct {
 	VerifierRuntime RoleRuntime
 	Now             func() time.Time
 	RetryDelay      func(attemptNumber int) time.Duration
+	GateIDGenerator func(now time.Time) string
 }
 
 type Runner struct {
@@ -58,6 +66,7 @@ type Runner struct {
 	verifierRuntime RoleRuntime
 	now             func() time.Time
 	retryDelay      func(int) time.Duration
+	gateIDGenerator func(time.Time) string
 }
 
 type artifactEvidence struct {
@@ -94,6 +103,10 @@ func NewRunner(config RunnerConfig) *Runner {
 			return delay
 		}
 	}
+	gateIDGenerator := config.GateIDGenerator
+	if gateIDGenerator == nil {
+		gateIDGenerator = defaultGateIDGenerator
+	}
 	return &Runner{
 		store:           config.Store,
 		records:         config.Records,
@@ -103,7 +116,15 @@ func NewRunner(config RunnerConfig) *Runner {
 		verifierRuntime: config.VerifierRuntime,
 		now:             now,
 		retryDelay:      retryDelay,
+		gateIDGenerator: gateIDGenerator,
 	}
+}
+
+// defaultGateIDGenerator mirrors the looprunner ID convention but without a
+// loop ID (the runner does not carry one); collisions within the same second
+// are acceptable for this layer and tests inject a deterministic Now.
+func defaultGateIDGenerator(now time.Time) string {
+	return "GATE-" + now.Format("20060102150405")
 }
 
 func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
@@ -168,6 +189,13 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 		return r.operationalFailure(
 			ctx, task, attempt, "executor_interrupted", errors.New("executor was interrupted"),
 		)
+	}
+
+	// Exit 42 signals a mid-run gate: the executor wrote a gate.context.md at
+	// PIRAMID_GATE_CONTEXT and wants a human/bot decision before continuing.
+	// Skip verification entirely; open a gate row and park the fire as gated.
+	if executorResult.ExitCode == GateExitCode {
+		return r.handleGate(ctx, task, attempt, paths)
 	}
 
 	evidence, artifactRecords := discoverArtifacts(task.ProjectPath, task.Outputs)
@@ -317,6 +345,52 @@ func (r *Runner) writeProcessResult(path string, result runtimepkg.Result) error
 	content = append(content, '\n')
 	_, err = r.records.WriteImmutable(path, content)
 	return err
+}
+
+// handleGate processes an exit-42 executor result: parse the gate context the
+// executor wrote at PIRAMID_GATE_CONTEXT, create an open gate row linked to the
+// fire/goal/task/attempt, and move the fire into FIRE_GATED. Returns nil on
+// success so the worker is released without invoking the verifier.
+func (r *Runner) handleGate(
+	ctx context.Context,
+	task domain.TaskRecord,
+	attempt domain.Attempt,
+	paths records.AttemptPaths,
+) error {
+	content, err := os.ReadFile(paths.GateContext)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return r.operationalFailure(ctx, task, attempt, "gate_context_invalid",
+				fmt.Errorf("executor exited %d but wrote no gate.context.md at %s: %w",
+					GateExitCode, paths.GateContext, err))
+		}
+		return r.operationalFailure(ctx, task, attempt, "gate_context_invalid", err)
+	}
+	gateContext, err := gate.ParseContext(string(content))
+	if err != nil {
+		return r.operationalFailure(ctx, task, attempt, "gate_context_invalid", err)
+	}
+	now := r.now()
+	gateRow := domain.Gate{
+		ID:          r.gateIDGenerator(now),
+		FireID:      gateContext.FireID,
+		GoalID:      gateContext.GoalID,
+		TaskID:      task.ID,
+		AttemptID:   strconv.FormatInt(attempt.ID, 10),
+		Status:      domain.GateOpen,
+		ContextPath: paths.GateContext,
+		Context:     gateContext,
+		OpenedAt:    now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if _, err := r.store.CreateGate(ctx, gateRow); err != nil {
+		return r.operationalFailure(ctx, task, attempt, "gate_create", err)
+	}
+	if err := r.store.UpdateFireStatus(ctx, gateContext.FireID, domain.FireGated, now); err != nil {
+		return r.operationalFailure(ctx, task, attempt, "fire_gated", err)
+	}
+	return nil
 }
 
 func (r *Runner) operationalFailure(
