@@ -62,10 +62,20 @@ type Loop struct {
 	ProjectPath string       `yaml:"project_path" json:"project_path"`
 	HumanGates  []string     `yaml:"human_gates" json:"human_gates"`
 	Token       LoopToken    `yaml:"token" json:"token"`
+	Triggers    Triggers     `yaml:"triggers,omitempty" json:"triggers,omitempty"`
 }
 
 type LoopToken struct {
 	DailyCap int `yaml:"daily_cap" json:"daily_cap"`
+}
+
+type GitHubTrigger struct {
+	Repos  []string `yaml:"repos" json:"repos"`
+	Events []string `yaml:"events" json:"events"`
+}
+
+type Triggers struct {
+	GitHub *GitHubTrigger `yaml:"github,omitempty" json:"github,omitempty"`
 }
 
 type FireStatus string

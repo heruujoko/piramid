@@ -111,6 +111,7 @@ func Start(ctx context.Context, options Options) (*Running, error) {
 	})
 	supervisor := engine.NewSupervisor(runner)
 	application := app.NewService(intakeService, st, recordStore, supervisor)
+	application.WebhookSecret = cfg.Loops.GitHubWebhookSecret
 	dispatches := make(chan engine.Dispatch, cfg.Workers.Count)
 	scheduler := engine.NewScheduler(engine.SchedulerConfig{
 		Store: st, WorkerCount: cfg.Workers.Count, Dispatch: dispatches,
@@ -148,6 +149,7 @@ func Start(ctx context.Context, options Options) (*Running, error) {
 		definitionsRoot = options.DefinitionsRoot
 	}
 	if definitionsRoot != "" {
+		application.Definitions = &definitionsSource{root: definitionsRoot}
 		loopScheduler := looprunner.NewScheduler(looprunner.Config{
 			Source:  &definitionsSource{root: definitionsRoot},
 			Store:   st,

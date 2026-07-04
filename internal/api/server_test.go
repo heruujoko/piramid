@@ -32,6 +32,21 @@ type fakeApplication struct {
 	cancelled   string
 	lastEventID int64
 	eventCalls  int
+
+	// Phase 6 test data
+	loops      []domain.LoopView
+	fires      []domain.FireView
+	gates      []domain.GateSummary
+	gateDetail domain.GateDetail
+	gateError  error
+	resolved   string
+	webhookCalls []webhookCall
+}
+
+type webhookCall struct {
+	eventType string
+	signature string
+	payload   []byte
 }
 
 type cancelOnFlushWriter struct {
@@ -108,6 +123,33 @@ func (f *fakeApplication) ListEvents(_ context.Context, after int64, _ int) ([]s
 	f.lastEventID = after
 	f.eventCalls++
 	return f.events, nil
+}
+func (f *fakeApplication) ListLoops(context.Context) ([]domain.LoopView, error) { return f.loops, nil }
+func (f *fakeApplication) ListLoopFires(_ context.Context, _ string) ([]domain.FireView, error) {
+	return f.fires, nil
+}
+func (f *fakeApplication) ListOpenGates(context.Context) ([]domain.GateSummary, error) { return f.gates, nil }
+func (f *fakeApplication) GetGate(_ context.Context, _ string) (domain.GateDetail, error) {
+	if f.gateError != nil {
+		return domain.GateDetail{}, f.gateError
+	}
+	return f.gateDetail, nil
+}
+func (f *fakeApplication) ResolveGate(_ context.Context, id string, input domain.GateDecisionInput) error {
+	switch domain.GateDecision(input.Decision) {
+	case domain.GateDecisionApprove, domain.GateDecisionRoute,
+		domain.GateDecisionDefer, domain.GateDecisionReject:
+	default:
+		return app.ErrInvalid
+	}
+	f.resolved = id
+	return nil
+}
+func (f *fakeApplication) HandleGitHubWebhook(_ context.Context, eventType string, signature string, payload []byte) error {
+	f.webhookCalls = append(f.webhookCalls, webhookCall{
+		eventType: eventType, signature: signature, payload: payload,
+	})
+	return nil
 }
 
 func TestServerExposesHealthAndTaskEndpoints(t *testing.T) {
@@ -293,5 +335,293 @@ func postJSON(t *testing.T, url string, value any, wantStatus int) {
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Scan()
 		t.Fatalf("%s status = %d, want %d: %s", url, response.StatusCode, wantStatus, scanner.Text())
+	}
+}
+
+// --- Phase 6 behavioral tests ---
+
+func TestListLoopsReturnsLoopsWithLatestFire(t *testing.T) {
+	application := &fakeApplication{
+		loops: []domain.LoopView{
+			{
+				ID:        "pr-review",
+				PatternID: "pr-review-pattern",
+				Active:    true,
+				Cron:      "0 */6 * * *",
+				Autonomy:  "L1",
+				LatestFire: &domain.FireSummary{
+					ID:          "FIRE-01",
+					LoopID:      "pr-review",
+					Status:      "FIRE_RUNNING",
+					ScheduledAt: "2026-07-04T12:00:00Z",
+				},
+			},
+		},
+	}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/v1/loops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	var loops []domain.LoopView
+	if err := json.NewDecoder(response.Body).Decode(&loops); err != nil {
+		t.Fatal(err)
+	}
+	if len(loops) != 1 {
+		t.Fatalf("len(loops) = %d, want 1", len(loops))
+	}
+	if loops[0].ID != "pr-review" {
+		t.Fatalf("loops[0].ID = %q, want pr-review", loops[0].ID)
+	}
+	if loops[0].LatestFire == nil || loops[0].LatestFire.ID != "FIRE-01" {
+		t.Fatalf("loops[0].LatestFire = %v, want FIRE-01", loops[0].LatestFire)
+	}
+}
+
+func TestListLoopFiresReturnsFiresForLoop(t *testing.T) {
+	application := &fakeApplication{
+		fires: []domain.FireView{
+			{
+				ID:          "FIRE-01",
+				LoopID:      "pr-review",
+				GoalID:      "GOAL-01",
+				Status:      "FIRE_DONE",
+				ScheduledAt: "2026-07-04T12:00:00Z",
+				StartedAt:   "2026-07-04T12:01:00Z",
+				LastError:   "",
+			},
+			{
+				ID:          "FIRE-02",
+				LoopID:      "pr-review",
+				Status:      "FIRE_RUNNING",
+				ScheduledAt: "2026-07-04T18:00:00Z",
+			},
+		},
+	}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/v1/loops/pr-review/fires")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	var fires []domain.FireView
+	if err := json.NewDecoder(response.Body).Decode(&fires); err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 2 {
+		t.Fatalf("len(fires) = %d, want 2", len(fires))
+	}
+	if fires[0].ID != "FIRE-01" || fires[1].ID != "FIRE-02" {
+		t.Fatalf("fires = %v", fires)
+	}
+}
+
+func TestListGatesReturnsOpenGates(t *testing.T) {
+	application := &fakeApplication{
+		gates: []domain.GateSummary{
+			{
+				ID:       "GATE-01",
+				Gate:     "review",
+				Phase:    "pr-summary",
+				FireID:   "FIRE-01",
+				LoopID:   "pr-review",
+				Summary:  "Needs human review: 3 threads",
+				OpenedAt: "2026-07-04T12:05:00Z",
+			},
+		},
+	}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/v1/gates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	var gates []domain.GateSummary
+	if err := json.NewDecoder(response.Body).Decode(&gates); err != nil {
+		t.Fatal(err)
+	}
+	if len(gates) != 1 {
+		t.Fatalf("len(gates) = %d, want 1", len(gates))
+	}
+	if gates[0].ID != "GATE-01" || gates[0].Summary != "Needs human review: 3 threads" {
+		t.Fatalf("gates[0] = %v", gates[0])
+	}
+}
+
+func TestGetGateReturnsDetail(t *testing.T) {
+	application := &fakeApplication{
+		gateDetail: domain.GateDetail{
+			ID:              "GATE-01",
+			Gate:            "review",
+			Phase:           "pr-summary",
+			FireID:          "FIRE-01",
+			LoopID:          "pr-review",
+			GoalID:          "GOAL-01",
+			TaskID:          "TASK-01",
+			AttemptID:       "3",
+			Summary:         "Needs human review: 3 threads",
+			OpenedAt:        "2026-07-04T12:05:00Z",
+			DecisionOptions: []string{"approve", "route", "defer", "reject"},
+			Threads: []domain.GateThreadView{
+				{ID: "t1", Title: "Thread 1", Summary: "Issue in auth module"},
+			},
+			Body: "## Decision needed\n\nPlease review the threads below.",
+		},
+	}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/v1/gates/GATE-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+
+	var detail domain.GateDetail
+	if err := json.NewDecoder(response.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ID != "GATE-01" || detail.Gate != "review" {
+		t.Fatalf("detail = %v", detail)
+	}
+	if len(detail.DecisionOptions) != 4 || detail.DecisionOptions[0] != "approve" {
+		t.Fatalf("DecisionOptions = %v", detail.DecisionOptions)
+	}
+	if len(detail.Threads) != 1 || detail.Threads[0].ID != "t1" {
+		t.Fatalf("Threads = %v", detail.Threads)
+	}
+	if detail.Body != "## Decision needed\n\nPlease review the threads below." {
+		t.Fatalf("Body = %q", detail.Body)
+	}
+}
+
+func TestGetGateReturns404ForMissing(t *testing.T) {
+	application := &fakeApplication{gateError: app.ErrNotFound}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/v1/gates/missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", response.StatusCode)
+	}
+}
+
+func TestResolveGateAcceptsValidDecision(t *testing.T) {
+	application := &fakeApplication{}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	postJSON(t, server.URL+"/v1/gates/GATE-01/decision", map[string]any{
+		"decision": "approve",
+		"note":     "looks good",
+	}, http.StatusNoContent)
+
+	if application.resolved != "GATE-01" {
+		t.Fatalf("resolved = %q, want GATE-01", application.resolved)
+	}
+}
+
+func TestResolveGateRejectsInvalidDecision(t *testing.T) {
+	application := &fakeApplication{}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	response, err := http.Post(
+		server.URL+"/v1/gates/GATE-01/decision",
+		"application/json",
+		strings.NewReader(`{"decision":"invalid"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	// invalid decision returns 400 from the service layer
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.StatusCode)
+	}
+}
+
+func TestGitHubWebhookRoutesToApplication(t *testing.T) {
+	application := &fakeApplication{}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	payload := `{"action":"opened","repository":{"full_name":"owner/repo"}}`
+	request, _ := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/v1/webhooks/github",
+		strings.NewReader(payload),
+	)
+	request.Header.Set("X-GitHub-Event", "pull_request")
+	request.Header.Set("X-Hub-Signature-256", "sha256=abc123")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if len(application.webhookCalls) != 1 {
+		t.Fatalf("webhookCalls = %d, want 1", len(application.webhookCalls))
+	}
+	call := application.webhookCalls[0]
+	if call.eventType != "pull_request" {
+		t.Fatalf("eventType = %q", call.eventType)
+	}
+	if call.signature != "sha256=abc123" {
+		t.Fatalf("signature = %q", call.signature)
+	}
+	if string(call.payload) != payload {
+		t.Fatalf("payload = %q", string(call.payload))
+	}
+}
+
+func TestGitHubWebhookMissingHeadersStillRoutes(t *testing.T) {
+	// Headers may be absent — the application layer handles validation.
+	application := &fakeApplication{}
+	server := httptest.NewServer(NewServer(application))
+	defer server.Close()
+
+	r, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/webhooks/github", strings.NewReader(`{}`))
+	response, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
 }

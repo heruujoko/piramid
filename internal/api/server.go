@@ -73,6 +73,23 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.readLog(writer, request, parts[2])
 	case request.Method == http.MethodGet && path == "v1/events":
 		s.events(writer, request)
+	// --- Loop/Fire endpoints ---
+	case request.Method == http.MethodGet && path == "v1/loops":
+		s.listLoops(writer, request)
+	case request.Method == http.MethodGet && len(parts) == 4 &&
+		parts[1] == "loops" && parts[3] == "fires":
+		s.listLoopFires(writer, request, parts[2])
+	// --- Gate endpoints ---
+	case request.Method == http.MethodGet && path == "v1/gates":
+		s.listGates(writer, request)
+	case request.Method == http.MethodGet && len(parts) == 3 && parts[1] == "gates":
+		s.getGate(writer, request, parts[2])
+	case request.Method == http.MethodPost && len(parts) == 4 &&
+		parts[1] == "gates" && parts[3] == "decision":
+		s.resolveGate(writer, request, parts[2])
+	// --- GitHub webhook ---
+	case request.Method == http.MethodPost && path == "v1/webhooks/github":
+		s.handleGitHubWebhook(writer, request)
 	default:
 		writeError(writer, http.StatusNotFound, "not_found", "endpoint not found")
 	}
