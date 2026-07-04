@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -341,6 +342,237 @@ func TestRunnerRejectsEscapingArtifactPath(t *testing.T) {
 	promptText := strings.Join(fixture.verifier.invocations[0].Args, "\n")
 	if !strings.Contains(promptText, "escapes project") {
 		t.Fatalf("verifier prompt = %q", promptText)
+	}
+}
+
+// gateContextMD builds a valid gate.context.md body referencing the given fire.
+func gateContextMD(fireID, loopID, goalID string) string {
+	return "---\n" +
+		"gate: human-review\n" +
+		"phase: execution\n" +
+		"loop_id: " + loopID + "\n" +
+		"fire_id: " + fireID + "\n" +
+		"goal_id: " + goalID + "\n" +
+		"summary: executor needs a decision\n" +
+		"decision_options: [approve, route, defer, reject]\n" +
+		"---\n" +
+		"## Gate\n\nPlease decide.\n"
+}
+
+// gateEnvPath extracts the PIRAMID_GATE_CONTEXT value from an invocation env.
+func gateEnvPath(env []string) string {
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, "PIRAMID_GATE_CONTEXT="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func envValue(env []string, key string) string {
+	prefix := key + "="
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, prefix); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func TestRunnerExit42CreatesOpenGateAndSkipsVerifier(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	// Create a real fire the gate will link to and park as gated.
+	fire, err := fixture.store.CreateFire(context.Background(), domain.Fire{
+		ID: "FIRE-1", LoopID: "LOOP-1", GoalID: "GOAL-1",
+		Status: domain.FireRunning, ScheduledAt: fixture.now, CreatedAt: fixture.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.executor.result.ExitCode = GateExitCode
+	fixture.executor.onRun = func(inv runtimepkg.Invocation) error {
+		gatePath := gateEnvPath(inv.Environment)
+		if gatePath == "" {
+			return errors.New("PIRAMID_GATE_CONTEXT not in executor env")
+		}
+		return os.WriteFile(gatePath, []byte(gateContextMD(fire.ID, "LOOP-1", "GOAL-1")), 0o600)
+	}
+
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err != nil {
+		t.Fatalf("Run error = %v", err)
+	}
+	// Verifier must not be invoked for a gated attempt.
+	if len(fixture.verifier.invocations) != 0 {
+		t.Fatalf("verifier invoked %d times, want 0", len(fixture.verifier.invocations))
+	}
+	// Exactly one open gate linked to the fire/goal/task/attempt.
+	openGates, err := fixture.store.ListOpenGates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(openGates) != 1 {
+		t.Fatalf("open gates = %d, want 1", len(openGates))
+	}
+	g := openGates[0]
+	if g.FireID != fire.ID || g.GoalID != "GOAL-1" || g.TaskID != "TASK-1" {
+		t.Fatalf("gate linkage = fire=%q goal=%q task=%q", g.FireID, g.GoalID, g.TaskID)
+	}
+	if g.AttemptID != "1" {
+		t.Fatalf("gate attempt id = %q, want 1", g.AttemptID)
+	}
+	if g.Status != domain.GateOpen {
+		t.Fatalf("gate status = %s, want GATE_OPEN", g.Status)
+	}
+	if filepath.Base(g.ContextPath) != "gate.context.md" {
+		t.Fatalf("gate context path = %q", g.ContextPath)
+	}
+	if g.Context.FireID != fire.ID || g.Context.Summary == "" {
+		t.Fatalf("gate context not stored: %+v", g.Context)
+	}
+	// Fire must be parked as gated.
+	fires, err := fixture.store.ListFires(context.Background(), "LOOP-1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fires) != 1 || fires[0].Status != domain.FireGated {
+		t.Fatalf("fire status = %v, want FIRE_GATED", fires)
+	}
+}
+
+// TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond verifies that the default
+// gate ID generator never collides when two attempts open a gate in the same
+// wall-clock second, which previously caused CreateGate to fail on the
+// gates.id primary key.
+func TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond(t *testing.T) {
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	seen := make(map[string]struct{}, 256)
+	const iterations = 256
+	for i := 0; i < iterations; i++ {
+		id := defaultGateIDGenerator(now)
+		if !strings.HasPrefix(id, "GATE-20260704120000-") {
+			t.Fatalf("id %q missing sortable timestamp prefix", id)
+		}
+		if _, dup := seen[id]; dup {
+			t.Fatalf("defaultGateIDGenerator produced a duplicate id %q at iteration %d "+
+				"(same-second collision that breaks gates.id primary key)", id, i)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != iterations {
+		t.Fatalf("unique ids = %d, want %d", len(seen), iterations)
+	}
+}
+
+func TestRunnerExit42MissingGateContextRecordsFailure(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	fixture.executor.result.ExitCode = GateExitCode
+	// Executor exits 42 but writes no gate.context.md.
+	fixture.executor.onRun = func(runtimepkg.Invocation) error { return nil }
+
+	err := fixture.runner.Run(context.Background(), fixture.dispatch)
+	if err == nil {
+		t.Fatal("Run error = nil, want gate_context_invalid failure")
+	}
+	if len(fixture.verifier.invocations) != 0 {
+		t.Fatalf("verifier invoked %d times, want 0", len(fixture.verifier.invocations))
+	}
+	openGates, err := fixture.store.ListOpenGates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(openGates) != 0 {
+		t.Fatalf("open gates = %d, want 0 (no gate for invalid context)", len(openGates))
+	}
+	// The attempt must be recorded as a failed operational failure.
+	task, err := fixture.store.GetTask(context.Background(), "TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status == domain.TaskCompleted {
+		t.Fatalf("task status = COMPLETED, want non-completed")
+	}
+}
+
+func TestRunnerPassesAuthoritativeGateLinkageToExecutorEnv(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	fire, err := fixture.store.CreateFire(context.Background(), domain.Fire{
+		ID: "FIRE-1", LoopID: "LOOP-1", GoalID: "GOAL-1",
+		Status: domain.FireRunning, ScheduledAt: fixture.now, CreatedAt: fixture.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.executor.result.ExitCode = GateExitCode
+	fixture.executor.onRun = func(inv runtimepkg.Invocation) error {
+		if got := envValue(inv.Environment, "PIRAMID_FIRE_ID"); got != fire.ID {
+			return fmt.Errorf("PIRAMID_FIRE_ID = %q, want %q", got, fire.ID)
+		}
+		if got := envValue(inv.Environment, "PIRAMID_LOOP_ID"); got != "LOOP-1" {
+			return fmt.Errorf("PIRAMID_LOOP_ID = %q, want LOOP-1", got)
+		}
+		if got := envValue(inv.Environment, "PIRAMID_GOAL_ID"); got != "GOAL-1" {
+			return fmt.Errorf("PIRAMID_GOAL_ID = %q, want GOAL-1", got)
+		}
+		gatePath := gateEnvPath(inv.Environment)
+		return os.WriteFile(gatePath, []byte(gateContextMD(fire.ID, "LOOP-1", "GOAL-1")), 0o600)
+	}
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err != nil {
+		t.Fatalf("Run error = %v", err)
+	}
+}
+
+func TestRunnerExit42UsesStoreDerivedGateLinkage(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	wrongFire, err := fixture.store.CreateFire(context.Background(), domain.Fire{
+		ID: "FIRE-OLD", LoopID: "LOOP-1", GoalID: "GOAL-1",
+		Status: domain.FireRunning,
+		ScheduledAt: fixture.now.Add(-time.Minute), CreatedAt: fixture.now.Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodFire, err := fixture.store.CreateFire(context.Background(), domain.Fire{
+		ID: "FIRE-1", LoopID: "LOOP-1", GoalID: "GOAL-1",
+		Status: domain.FireRunning, ScheduledAt: fixture.now, CreatedAt: fixture.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.executor.result.ExitCode = GateExitCode
+	fixture.executor.onRun = func(inv runtimepkg.Invocation) error {
+		gatePath := gateEnvPath(inv.Environment)
+		return os.WriteFile(gatePath, []byte(gateContextMD(wrongFire.ID, "LOOP-1", "GOAL-1")), 0o600)
+	}
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err != nil {
+		t.Fatalf("Run error = %v", err)
+	}
+	openGates, err := fixture.store.ListOpenGates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(openGates) != 1 {
+		t.Fatalf("open gates = %d, want 1", len(openGates))
+	}
+	g := openGates[0]
+	if g.FireID != goodFire.ID || g.GoalID != "GOAL-1" {
+		t.Fatalf("gate linkage = fire=%q goal=%q, want fire=%q goal=GOAL-1", g.FireID, g.GoalID, goodFire.ID)
+	}
+	if g.Context.FireID != wrongFire.ID {
+		t.Fatalf("gate context audit payload = %+v, want wrong executor-written fire id preserved for audit", g.Context)
+	}
+	fires, err := fixture.store.ListFires(context.Background(), "LOOP-1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusByID := map[string]domain.FireStatus{}
+	for _, f := range fires {
+		statusByID[f.ID] = f.Status
+	}
+	if statusByID[goodFire.ID] != domain.FireGated {
+		t.Fatalf("authoritative fire status = %v, want %s gated", statusByID, goodFire.ID)
+	}
+	if statusByID[wrongFire.ID] != domain.FireRunning {
+		t.Fatalf("wrong fire status = %v, want %s still running", statusByID, wrongFire.ID)
 	}
 }
 

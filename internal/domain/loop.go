@@ -95,6 +95,16 @@ type Fire struct {
 	LastError   string     `yaml:"last_error,omitempty" json:"last_error,omitempty"`
 }
 
+// TaskGateLinkage is the authoritative fire/goal linkage for a task, derived from
+// store state (attempts.task_id -> tasks.goal_id -> fires) rather than from an
+// executor-supplied gate context. FireID may be empty for tasks admitted
+// outside the loop scheduler (no fire to park); callers must guard on that.
+type TaskGateLinkage struct {
+	FireID string `yaml:"fire_id,omitempty" json:"fire_id,omitempty"`
+	LoopID string `yaml:"loop_id,omitempty" json:"loop_id,omitempty"`
+	GoalID string `yaml:"goal_id,omitempty" json:"goal_id,omitempty"`
+}
+
 type GateStatus string
 
 const (

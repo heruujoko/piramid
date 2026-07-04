@@ -177,6 +177,25 @@ func TestParseContextAcceptsCRLFLineEndings(t *testing.T) {
 	}
 }
 
+func TestParseContextAllowsOmittedLinkageIDs(t *testing.T) {
+	content := `---
+gate: review
+phase: execution
+summary: Review
+decision_options:
+  - approve
+---
+Body
+`
+	gc, err := ParseContext(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gc.FireID != "" || gc.LoopID != "" || gc.GoalID != "" {
+		t.Fatalf("expected omitted linkage ids to stay empty, got %+v", gc)
+	}
+}
+
 func TestParseContextAllowsOptionalFields(t *testing.T) {
 	content := `---
 gate: review

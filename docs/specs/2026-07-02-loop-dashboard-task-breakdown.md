@@ -401,23 +401,23 @@
 
 ### Steps
 
-- [ ] Define constant `GateExitCode = 42`.
-- [ ] After executor returns, branch on exit code before verifier.
-- [ ] If exit 42:
-  - [ ] parse `gate.context.md`.
-  - [ ] create gate row linked to fire/goal/task/attempt.
-  - [ ] update fire status to `gated`.
-  - [ ] emit gate/fire events via store.
-  - [ ] return nil without verifier.
-- [ ] If exit 42 but context missing/invalid, record operational failure `gate_context_invalid`.
+- [x] Define constant `GateExitCode = 42`.
+- [x] After executor returns, branch on exit code before verifier.
+- [x] If exit 42:
+  - [x] parse `gate.context.md`.
+  - [x] create gate row linked to fire/goal/task/attempt.
+  - [x] update fire status to `gated`.
+  - [x] emit gate/fire events via store. (`CreateGate` emits `GATE_OPENED`; `UpdateFireStatus` emits `FIRE_STATUS_CHANGED`)
+  - [x] return nil without verifier.
+- [x] If exit 42 but context missing/invalid, record operational failure `gate_context_invalid`.
 
 ### Acceptance checklist
 
-- [ ] Exit 42 with valid artifact creates open gate.
-- [ ] Verifier is not invoked for gated attempts.
-- [ ] Dispatch worker is released.
-- [ ] Missing artifact records failure.
-- [ ] Exit 0 path remains unchanged.
+- [x] Exit 42 with valid artifact creates open gate.
+- [x] Verifier is not invoked for gated attempts.
+- [x] Dispatch worker is released. (`defer dispatch.Done()`)
+- [x] Missing artifact records failure.
+- [x] Exit 0 path remains unchanged.
 
 ---
 

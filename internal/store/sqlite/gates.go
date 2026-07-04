@@ -105,6 +105,35 @@ func (s *Store) ListOpenGates(ctx context.Context) ([]domain.Gate, error) {
 	return gates, rows.Err()
 }
 
+// GetTaskGateLinkage derives the authoritative fire/goal linkage for a task
+// from store state. It joins tasks.goal_id -> fires and returns the most
+// recently scheduled fire for the task's goal, so the runner can park the
+// correct fire even when an executor omits or mis-identifies it in the gate
+// context. For tasks admitted outside the loop scheduler (no fire), FireID is
+// empty and the caller should skip fire parking.
+func (s *Store) GetTaskGateLinkage(ctx context.Context, taskID string) (domain.TaskGateLinkage, error) {
+	var (
+		linkage   domain.TaskGateLinkage
+		fireID    sql.NullString
+		loopID    sql.NullString
+		goalID    string
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT t.goal_id,
+		       (SELECT f.id      FROM fires f WHERE f.goal_id = t.goal_id ORDER BY f.scheduled_at DESC, f.id DESC LIMIT 1),
+		       (SELECT f.loop_id  FROM fires f WHERE f.goal_id = t.goal_id ORDER BY f.scheduled_at DESC, f.id DESC LIMIT 1)
+		FROM tasks t
+		WHERE t.id = ?
+	`, taskID).Scan(&goalID, &fireID, &loopID)
+	if err != nil {
+		return domain.TaskGateLinkage{}, err
+	}
+	linkage.GoalID = goalID
+	linkage.FireID = fireID.String
+	linkage.LoopID = loopID.String
+	return linkage, nil
+}
+
 func (s *Store) ResolveGate(ctx context.Context, in storepkg.ResolveGateInput) error {
 	now := in.Now
 	if now.IsZero() {
