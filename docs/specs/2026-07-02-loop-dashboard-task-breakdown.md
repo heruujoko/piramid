@@ -36,7 +36,7 @@
 - [x] M2 Runtime state
 - [x] M3 Loop scheduler
 - [x] M4 Mid-run gate
-- [ ] M5 Resume (partial: T-050 gate resolution works, T-051/T-052 pending)
+- [x] M5 Resume (T-050 gate resolution, T-051 restore prompt, T-052 fire resume/terminate)
 - [x] M6 API
 - [ ] M7 UI
 - [ ] M8 E2E
@@ -450,20 +450,20 @@
 
 ### Steps
 
-- [ ] Build restore seed containing:
-  - [ ] original task YAML or task id.
-  - [ ] gate context path.
-  - [ ] gate summary.
-  - [ ] decision.
-  - [ ] human note.
-  - [ ] resume instruction.
-- [ ] Ensure `route` and `reject` include note text.
-- [ ] Keep seed deterministic and testable.
+- [x] Build restore seed containing:
+  - [x] original task YAML or task id.
+  - [x] gate context path.
+  - [x] gate summary.
+  - [x] decision.
+  - [x] human note.
+  - [x] resume instruction.
+- [x] Ensure `route` and `reject` include note text.
+- [x] Keep seed deterministic and testable.
 
 ### Acceptance checklist
 
-- [ ] Snapshot/unit test verifies seed content.
-- [ ] Seed instructs agent not to repeat completed ledger work.
+- [x] Snapshot/unit test verifies seed content.
+- [x] Seed instructs agent not to repeat completed ledger work.
 
 ## T-052 — Resume or terminate fire based on decision
 
@@ -473,19 +473,19 @@
 
 ### Steps
 
-- [ ] `approve`: mark fire running and enqueue/retry fresh attempt.
-- [ ] `route`: mark fire running and enqueue/retry fresh attempt with note.
-- [ ] `defer`: mark fire deferred; do not enqueue.
-- [ ] `reject`: mark fire rejected; do not enqueue.
-- [ ] Emit `fire.running`, `fire.deferred`, or `fire.rejected` events.
+- [x] `approve`: mark fire running and enqueue/retry fresh attempt.
+- [x] `route`: mark fire running and enqueue/retry fresh attempt with note.
+- [x] `defer`: mark fire deferred; do not enqueue.
+- [x] `reject`: mark fire rejected; do not enqueue.
+- [x] Emit `fire.running`, `fire.deferred`, or `fire.rejected` events.
 
 ### Acceptance checklist
 
-- [ ] Approve resumes.
-- [ ] Route resumes with note in retry prompt.
-- [ ] Defer does not resume.
-- [ ] Reject does not resume.
-- [ ] Events are emitted.
+- [x] Approve resumes.
+- [x] Route resumes with note in retry prompt.
+- [x] Defer does not resume.
+- [x] Reject does not resume.
+- [x] Events are emitted.
 
 ---
 
