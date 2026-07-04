@@ -1,8 +1,9 @@
 # Phase 6 — HTTP API Design
 
 **Date:** 2026-07-04
-**Status:** Approved
+**Status:** Merged
 **Branch:** `phase-6-http-api-github-webhooks`
+**Merge commit:** `f3e219f`
 
 ## Overview
 

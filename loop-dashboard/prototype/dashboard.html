@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Loop Dashboard — Prototype</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121826; --panel2:#0e1421; --line:#1f2937;
+    --ink:#e5e9f0; --mut:#8b95a7; --mut2:#5b6678;
+    --accent:#3ee8c5; --accent2:#7c9cff; --warn:#f5a524; --bad:#ef4444;
+    --good:#34d399; --gate:#c084fc;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,Segoe UI,Roboto,Inter,sans-serif}
+  #app{min-height:100vh}
+  h1,h2,h3{margin:0;font-weight:600}
+  .mut{color:var(--mut)}
+  .tag{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--mut)}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* shared header */
+  .topbar{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+  .topbar .brand{font-weight:700;letter-spacing:.3px}
+  .topbar .spacer{flex:1}
+  .btn{background:#1b2433;border:1px solid var(--line);color:var(--ink);padding:6px 11px;border-radius:8px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .pill{padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .pill.on{color:var(--good);border-color:#233b34;background:#0e1a15}
+  .pill.off{color:var(--mut2)}
+  .risk-low{color:var(--good)} .risk-medium{color:var(--warn)} .risk-high{color:var(--bad)}
+
+  /* ---- Switcher ---- */
+  #switch{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99;display:flex;align-items:center;gap:10px;background:#000;border:1px solid var(--accent);box-shadow:0 8px 30px rgba(0,0,0,.6);border-radius:999px;padding:7px 12px;background:#0a0f18}
+  #switch .lbl{font-size:12px;color:var(--accent);min-width:188px;text-align:center}
+  #switch button{background:transparent;border:0;color:var(--ink);font-size:16px;cursor:pointer;width:28px;height:28px;border-radius:50%}
+  #switch button:hover{background:#11203a}
+
+  /* ---- modal ---- */
+  #modal,.modal-scrim{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
+  #modal.open,.modal-scrim.open{display:flex}
+  #gatemodal{z-index:125}
+  .sheet{width:min(880px,94vw);max-height:88vh;overflow:auto;background:var(--panel);border:1px solid var(--accent);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .sheet .sh{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .sheet .sh h3{font-size:15px}
+  .sheet .sb{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;background:var(--panel2)}
+  .sheet .body{padding:16px 18px}
+  .edwrap{display:grid;grid-template-columns:1fr 300px;gap:14px}
+  .edwrap textarea{width:100%;min-height:300px;background:#070b12;color:var(--ink);border:1px solid var(--line);border-radius:10px;font:12.5px/1.55 ui-monospace,monospace;padding:12px;resize:vertical}
+  .edwrap textarea:focus{outline:none;border-color:var(--accent)}
+  .vbox{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12px}
+  .vbox .vh{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);margin-bottom:8px}
+  .vrow{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #131a26}
+  .vrow:last-child{border-bottom:0}
+  .vrow .k{color:var(--mut)} .vok{color:var(--good)} .verr{color:var(--bad)}
+  .verrs{margin-top:10px}
+  .verr-li{color:var(--bad);font-size:11.5px;padding:3px 0;display:flex;gap:6px}
+  .vok-msg{color:var(--good);font-size:11.5px;margin-top:8px}
+  .toast{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);background:#0a1a15;border:1px solid var(--good);color:var(--good);padding:8px 14px;border-radius:8px;font-size:13px;z-index:130;opacity:0;transition:opacity .2s}
+  .toast.show{opacity:1}
+
+  /* ===== Variant A: Board ===== */
+  .board{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:16px;align-items:start}
+  .col{background:var(--panel2);border:1px solid var(--line);border-radius:12px;min-height:300px;display:flex;flex-direction:column}
+  .col h3{font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);padding:10px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+  .col .ct{color:var(--mut2)}
+  .col .body{padding:10px;display:flex;flex-direction:column;gap:10px}
+  .card{background:#0c1320;border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer}
+  .card:hover{border-color:var(--accent)}
+  .card .ttl{font-weight:600;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .card .row{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:6px}
+  .runs{display:flex;gap:3px;margin-top:7px}
+  .runs i{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid var(--line)}
+  .i-pass{background:#123026} .i-fail{background:#3a1620} .i-run{background:#1a2538} .i-gate{background:#28163a}
+  .bar{height:5px;border-radius:3px;background:#0a0f18;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+
+  /* ===== Variant B: Timeline ===== */
+  .rail{padding:16px 18px}
+  .rail .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .tracks{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+  .track{display:grid;grid-template-columns:200px 1fr;align-items:stretch;border-bottom:1px solid var(--line)}
+  .track:last-child{border-bottom:0}
+  .track .meta{padding:11px 14px;border-right:1px solid var(--line);background:var(--panel2)}
+  .track .meta .ttl{font-weight:600;font-size:13px}
+  .track .meta .sub{color:var(--mut);font-size:11px;margin-top:2px}
+  .track .lane{position:relative;height:56px;background:linear-gradient(var(--panel),var(--panel))}
+  .lane .axis{position:absolute;inset:0;display:grid;grid-template-columns:repeat(24,1fr)}
+  .lane .axis i{border-right:1px solid #101622}
+  .lane .now{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .pulse{position:absolute;top:14px;width:14px;height:14px;border-radius:50%;border:2px solid;transform:translateX(-50%);cursor:pointer}
+  .pulse.done{border-color:var(--good);background:#0e1a15;color:var(--good)}
+  .pulse.next{border-color:var(--accent2);background:#0a1426;color:var(--accent2);animation:bk 1.6s infinite}
+  .pulse.gate{border-color:var(--gate);background:#190f26}
+  .pulse.fail{border-color:var(--bad);background:#1a0c12}
+  @keyframes bk{0%,100%{box-shadow:0 0 0 0 rgba(124,156,255,.5)}50%{box-shadow:0 0 0 6px rgba(124,156,255,0)}}
+  .ruler{display:grid;grid-template-columns:200px 1fr;padding:0 0 8px}
+  .ruler .ticks{display:grid;grid-template-columns:repeat(8,1fr);font-size:10px;color:var(--mut2)}
+  .ruler .ticks i{text-align:center}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--mut);margin-top:12px;flex-wrap:wrap}
+  .leg{display:inline-flex;align-items:center;gap:6px}
+
+  /* ===== Variant C: Console ===== */
+  .console{display:grid;grid-template-columns:230px 1fr 340px;height:calc(100vh - 52px)}
+  .tree{background:var(--panel2);border-right:1px solid var(--line);padding:12px;overflow:auto}
+  .tree .grp{color:var(--mut2);font-size:10px;letter-spacing:.6px;text-transform:uppercase;margin:14px 0 6px}
+  .tree .f{padding:6px 8px;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut)}
+  .tree .f:hover{background:#0c1320}
+  .tree .f.sel{background:#0c1320;color:var(--accent)}
+  .tree .f .ic{width:14px;text-align:center}
+  .editor{display:flex;flex-direction:column;border-right:1px solid var(--line)}
+  .editor .tabs{display:flex;gap:0;border-bottom:1px solid var(--line);background:var(--panel)}
+  .editor .tab{padding:9px 15px;border-right:1px solid var(--line);color:var(--mut);font-size:12px}
+  .editor .tab.act{color:var(--ink);border-bottom:2px solid var(--accent)}
+  .editor .code{flex:1;overflow:auto;padding:14px 18px;background:#070b12;font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.7}
+  .editor .code .k{color:#f0a3c9}.c .s{color:#a3e6f0}.c .n{color:#f5cd7a}.c .c{color:#4a5568;font-style:italic}
+  .editor .foot{border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;background:var(--panel)}
+  .inspect{background:var(--panel2);overflow:auto;padding:0}
+  .inspect h3{padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;letter-spacing:.4px;text-transform:uppercase;color:var(--mut);position:sticky;top:0;background:var(--panel2)}
+  .inspect .blk{padding:12px 14px;border-bottom:1px solid var(--line)}
+  .inspect .blk .t{color:var(--mut);font-size:11px;margin-bottom:6px}
+  .log{font-family:ui-monospace,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;color:var(--mut)}
+  .log .lvl{color:var(--accent)} .log .err{color:var(--bad)} .log .ok{color:var(--good)}
+  .gate-chip{display:inline-block;padding:2px 7px;border-radius:6px;border:1px solid var(--line);font-size:11px;color:var(--gate);margin:2px 4px 2px 0}
+  /* gate badge in header */
+  .gates-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;border:1px solid var(--warn);background:#1a1408;color:var(--warn);font-size:12px;cursor:pointer;font-weight:600}
+  .gates-badge.zero{border-color:var(--line);background:transparent;color:var(--mut2);cursor:default;font-weight:400}
+  .gates-badge .gdot{width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 6px var(--warn)}
+  .gates-badge.zero .gdot{background:var(--mut2);box-shadow:none}
+  /* gated card highlight */
+  .card.gated{border-color:var(--warn);background:linear-gradient(180deg,#13110a,#0c1320);cursor:pointer;position:relative}
+  .card.gated::before{content:'⚠ needs decision';position:absolute;top:-1px;right:-1px;background:var(--warn);color:#1a0f00;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:0 0 0 8px;letter-spacing:.4px}
+  /* gate modal */
+  .gate-detail{display:grid;grid-template-columns:1fr;gap:0}
+  .gate-detail .ctx{padding:14px 18px;border-bottom:1px solid var(--line)}
+  .gate-detail .ctx .lbl{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut2);margin-bottom:4px}
+  .gate-detail .ctx .val{font-size:13px;font-weight:600}
+  .thread{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--gate);border-radius:8px;padding:12px 14px;margin:8px 0 4px}
+  .thread .th-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .thread .th-loc{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent2)}
+  .thread .th-who{font-size:11px}
+  .thread .th-who .auth{padding:1px 7px;border-radius:5px;border:1px solid var(--line);font-size:10px}
+  .thread .th-who .auth.human{color:var(--accent2);border-color:#2a3a6a}
+  .thread .th-who .auth.bot{color:var(--mut);border-color:var(--line)}
+  .thread .th-body{font-size:12.5px;margin:8px 0;color:var(--ink);line-height:1.55}
+  .thread .th-class{font-size:11px;color:var(--warn);font-style:italic}
+  .decision{padding:14px 18px;border-top:1px solid var(--line);background:var(--panel2)}
+  .decision .dlbl{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut2);margin-bottom:10px}
+  .decision-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  .dec-btn{display:flex;flex-direction:column;gap:4px;text-align:left;background:#0c1320;border:1px solid var(--line);border-radius:9px;padding:11px 12px;cursor:pointer;transition:border-color .15s}
+  .dec-btn:hover{border-color:var(--accent)}
+  .dec-btn .d-name{font-weight:700;font-size:13px}
+  .dec-btn .d-name.warn{color:var(--warn)} .dec-btn .d-name.good{color:var(--good)} .dec-btn .d-name.bad{color:var(--bad)} .dec-btn .d-name.mut{color:var(--accent2)}
+  .dec-btn .d-act{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--mut);line-height:1.5}
+  .note-box{width:100%;min-height:62px;background:#070b12;color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.5px;resize:vertical;font-family:inherit}
+  .note-box:focus{outline:none;border-color:var(--accent)}
+  .note-lbl{font-size:11px;color:var(--mut);margin-bottom:6px;display:flex;justify-content:space-between}
+  .note-lbl .hint{color:var(--mut2)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="switch">
+  <button id="prev" title="previous">◀</button>
+  <span class="lbl" id="slabel"></span>
+  <button id="next" title="next">▶</button>
+</div>
+<script>
+/* ============ shared mock data ============ */
+/* STATE.registry mirrors cobusgreyling/loop-engineering patterns/registry.yaml +
+   registry.schema.json — the authorable pattern palette. STATE.loops are
+   instances that reference a pattern by id and bind it to a cron + project. */
+const HI = s => s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function norm(p){return p.split('-').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');}
+
+const STATE = { registry: [
+  {id:'daily-triage',       name:'Daily Triage',        file:'daily-triage.md',       goal:'Prioritized morning scan of CI, issues, commits, and chat', cadence:'1d-2h',  risk:'low',    tools:['claude-code','github-actions'], skills:['loop-triage','minimal-fix'],             state:'STATE.md',                  phases:['report','act-small-wins','escalate'],          human_gates:['design-decisions','multi-file-refactors'],      week_one_mode:'L1', token_cost:'low',       cost:{tokens_noop:5000,tokens_report:50000,tokens_action:200000,suggested_daily_cap:100000,early_exit_required:false}},
+  {id:'pr-babysitter',      name:'PR Babysitter',       file:'pr-babysitter.md',      goal:'Shepherd PRs through review, CI, rebase, and merge',        cadence:'5m-15m', risk:'medium', tools:['claude-code','github-actions'], skills:['pr-review-triage','minimal-fix','rebase-and-clean'], state:'pr-babysitter-state.md',     phases:['discover','triage','fix','verify','notify'],    human_gates:['security','payments','auth','max-fix-attempts'], week_one_mode:'L1', token_cost:'high',      cost:{tokens_noop:3000,tokens_report:80000,tokens_action:250000,suggested_daily_cap:2000000,early_exit_required:true}},
+  {id:'ci-sweeper',         name:'CI Sweeper',          file:'ci-sweeper.md',        goal:'React to failing CI with minimal fixes and escalation',     cadence:'5m-15m', risk:'medium', tools:['claude-code','github-actions'], skills:['ci-triage','minimal-fix'],             state:'ci-sweeper-state.md',        phases:['detect','classify','fix','verify','escalate'],  human_gates:['infra-failures','max-attempts','security-tests'], week_one_mode:'L2', token_cost:'very-high', cost:{tokens_noop:5000,tokens_report:50000,tokens_action:200000,suggested_daily_cap:1000000,early_exit_required:true}},
+  {id:'dependency-sweeper', name:'Dependency Sweeper',  file:'dependency-sweeper.md', goal:'Discover, safely apply, and verify dependency + vulnerability updates', cadence:'6h-1d', risk:'medium', tools:['claude-code','github-actions'], skills:['dependency-triage','minimal-fix','loop-verifier'], state:'dependency-sweeper-state.md', phases:['scan','triage-risk','patch-safe','verify-worktree','escalate-risky'], human_gates:['major-bumps','high-sev-cve','denylisted-packages','max-attempts'], week_one_mode:'L2', token_cost:'medium', cost:{tokens_noop:5000,tokens_report:60000,tokens_action:300000,suggested_daily_cap:500000,early_exit_required:true}},
+  {id:'post-merge-cleanup', name:'Post-Merge Cleanup', file:'post-merge-cleanup.md', goal:'Follow-up tech debt and cleanup after merges to main, shepherding each merged PR through review feedback via pr-maintainer', cadence:'1d-6h',  risk:'low',    tools:['claude-code','github-actions'], skills:['post-merge-scan','minimal-fix','pr-maintainer'], state:'post-merge-state.md', phases:['scan-merges','enumerate-threads','route-item','fix-small','reply-resolve','ticket-large'], human_gates:['architectural-debt','feature-flags','large-diffs','unresolved-feedback'], week_one_mode:'L1', token_cost:'low', cost:{tokens_noop:5000,tokens_report:40000,tokens_action:150000,suggested_daily_cap:200000,early_exit_required:false}},
+  {id:'changelog-drafter',  name:'Changelog Drafter',  file:'changelog-drafter.md',  goal:'Scan merged PRs and commits, draft categorized release notes', cadence:'1d',     risk:'low',    tools:['claude-code','github-actions'], skills:['changelog-scan','draft-release-notes','loop-verifier'], state:'changelog-drafter-state.md', phases:['scan-merges','categorize','draft','review','publish'], human_gates:['breaking-changes','security','major-features','marketing-sensitive'], week_one_mode:'L1', token_cost:'low',     cost:{tokens_noop:5000,tokens_report:35000,tokens_action:80000,suggested_daily_cap:100000,early_exit_required:false}},
+  {id:'issue-triage',       name:'Issue Triage',        file:'issue-triage.md',      goal:'Discover, dedupe, prioritize and label incoming issues',     cadence:'2h-1d',  risk:'low',    tools:['claude-code','github-actions'], skills:['issue-triage','loop-verifier'],         state:'issue-triage-state.md',     phases:['discover','dedupe','score','propose-labels','human-review'], human_gates:['security','p0-p1','ambiguous-duplicates','stale-closures'], week_one_mode:'L1', token_cost:'low', cost:{tokens_noop:3000,tokens_report:30000,tokens_action:60000,suggested_daily_cap:80000,early_exit_required:false}},
+], loops: [
+  {id:'LOOP-01', pat:'daily-triage',       active:true,  cron:'30 9 * * *',    lastGoal:'TASK-221', runs:['pass','pass','pass','gate','pass'], toks:42e3,  cap:100e3, gate:'design-decisions'},
+  {id:'LOOP-02', pat:'pr-babysitter',      active:true,  cron:'*/10 * * * *',  lastGoal:'TASK-208', runs:['pass','run','fail','pass','gate'],   toks:1.4e6, cap:2e6,  gate:'max-fix-attempts'},
+  {id:'LOOP-03', pat:'ci-sweeper',         active:true,  cron:'*/15 * * * *',  lastGoal:'—',         runs:['pass','pass','pass','pass','run'],   toks:920e3, cap:1e6,  gate:'infra-failures'},
+  {id:'LOOP-04', pat:'dependency-sweeper', active:false, cron:'0 */6 * * *',   lastGoal:'TASK-199', runs:['pass','gate','pass','pass','pass'],   toks:210e3, cap:500e3, gate:'major-bumps'},
+  {id:'LOOP-05', pat:'post-merge-cleanup', active:true,  cron:'0 21 * * *',    lastGoal:'PR #182',   runs:['pass','pass','pass','run','gate'],    toks:38e3,  cap:200e3, gate:'unresolved-feedback'},
+  {id:'LOOP-06', pat:'changelog-drafter',  active:true,  cron:'0 9 * * *',     lastGoal:'—',         runs:['pass','pass','pass','pass','pass'],   toks:31e3,  cap:100e3, gate:'breaking-changes'},
+  {id:'LOOP-07', pat:'issue-triage',       active:true,  cron:'0 */4 * * *',   lastGoal:'TASK-231', runs:['gate','pass','pass','pass','pass'],   toks:24e3,  cap:80e3,  gate:'ambiguous-duplicates'},
+] };
+// trigger is a loop-instance property (the pattern registry has none).
+STATE.loops.forEach(l=>{ if(!l.trigger) l.trigger = (l.pat==='ci-sweeper'||l.pat==='changelog-drafter')?'pi':'piramid'; });
+
+/* Gate context — the pr-maintainer thread ledger that each gated loop paused on.
+   This is exactly what the pr-maintainer skill produces before classifying a
+   thread: inline review comments via `gh api .../pulls/{pr}/comments`, top-level
+   reviews via `gh pr view --json reviews,comments`, every thread classified.*/
+const GATE_CTX = {
+  'LOOP-05': { // post-merge-cleanup · unresolved-feedback · PR #182
+    trigger: 'post-merge-cleanup · after PR #182 merged into main',
+    stalledPhase: 'route-item',
+    why: 'pr-maintainer enumerated 4 review threads on PR #182. One (internal/api.go:124) is actionable but the touch is beyond minimal-fix scope — two files need wrapping. Per anti-skip rules, it is not silently dropped; the loop gates for a human decision.',
+    threads: [
+      { id: 'r182c1', loc: 'internal/api.go:124', author:'cobusgreyling', author_type:'human',
+        reviewed_commit:'a1f3c2e',
+        body:'This error path swallows the cause — please wrap with %w so callers can unwrap. Also, the test in api_test.go should assert the wrapped error.',
+        klass:'actionable — beyond minimal-fix scope (2 files)' },
+      { id:'r182c2', loc:'README.md:42', author:'github-actions[bot]', author_type:'bot',
+        reviewed_commit:'7b2d910',
+        body:'ci/linkcheck: 2 broken anchor links found in the new section.',
+        klass:'actionable — minimal-fix (anchored) · already queued by this loop' },
+      { id:'r182r1', loc:'(top-level review)', author:'coderabbitai', author_type:'bot',
+        reviewed_commit:'a1f3c2e',
+        body:'Consider extracting a helper to avoid duplicating the retry booleans across handlers.',
+        klass:'informational — no reply needed' },
+    ],
+    threadLedger: 'r182c1 → open · r182c2 → routed this pass · r182r1 → informational (no reply)',
+  },
+  'LOOP-02': { // pr-babysitter · max-fix-attempts
+    trigger:'pr-babysitter · PR #179 rebase + failing test',
+    stalledPhase:'fix',
+    why:'pr-babysitter attempted 3 minimal fixes on PR #179. All failed CI. The max-fix-attempts human gate fired to avoid an unattended fix loop.',
+    threads:[
+      { id:'r179c1', loc:'pkg/retry.go:88', author:'reviewer', author_type:'human', reviewed_commit:'c4f8b21',
+        body:'The backoff should be exponential, not linear.', klass:'actionable — attempt failed 3×' },
+    ],
+    threadLedger:'r179c1 → open (3 failed attempts)',
+  },
+  'LOOP-04': { // dependency-sweeper · major-bumps (paused, but shown for completeness)
+    trigger:'dependency-sweeper · semver-major bump on github.com/foo/bar',
+    stalledPhase:'triage-risk',
+    why:'dependency-sweeper detected a semver-major bump (v2 → v3) on github.com/foo/bar with breaking API changes. The major-bumps human gate fires on any major bump — never auto-applied.',
+    threads:[], threadLedger:'(no PR threads — this is a dependency check, not a PR maintenance gate)',
+  },
+  'LOOP-07': { // issue-triage · ambiguous-duplicates
+    trigger:'issue-triage · #301 and #298 look like duplicates',
+    stalledPhase:'dedupe',
+    why:'issue-triage flagged #301 and #298 as likely duplicates (cosine 0.89). The ambiguous-duplicates human gate fires — auto-closing a real bug as a dup is high-cost.',
+    threads:[], threadLedger:'(issues, not PR threads)',
+  },
+};
+function gateCtx(l){ return GATE_CTX[l.id]; }
+function gatedLoops(){ return LOOPS.filter(l=>l.active && phaseOf(l)==='gate'); }
+
+// downstream gh-action preview for each decision button (shown inline before press)
+const GATE_ACTS = {
+  approve: '<code>git push</code> fix → <code>gh api …/comments/{id}/replies</code> in-thread → PATCH <code>resolved=true</code> → loop resumes L2',
+  route:   'hand item #1 to commander as scoped work → loop enters <code>RETRY_WAIT</code> until follow-up branch lands',
+  defer:   'snooze until next cron (<code>0 21 * * *</code> 21:00 UTC) → re-runs this pass',
+  reject:  'agent replies your note in-thread via <code>gh api …/comments/{id}/replies</code> → thread stays open · loop moves on',
+};
+
+function regById(id){ return STATE.registry.find(p=>p.id===id); }
+const LOOPS = STATE.loops;              // alias; STATE.loops is the mutable truth
+const nextLoopId = () => 'LOOP-' + String(STATE.loops.length + 1).padStart(2,'0');
+const nextPatternId = () => { let n=STATE.registry.length+1, id='custom-pattern-'+n; while(regById(id)) id='custom-pattern-'+(++n); return id; };
+const phaseOf = l => { if(!l.active) return 'paused'; const last=l.runs[l.runs.length-1]; return last==='run'?'running':last==='gate'?'gate':'done'; };
+
+/* ---- cron (5-field, UTC) ---- */
+const CRON_RANGES=[[0,59],[0,23],[1,31],[1,12],[0,7]]; // 0 and 7 both = Sunday on dow
+function cronValid(expr){
+  if(typeof expr!=='string'||!expr.trim()) return false;
+  const presets={'@yearly':1,'@annually':1,'@monthly':1,'@weekly':1,'@daily':1,'@hourly':1,'@midnight':1};
+  const p=expr.trim(); if(presets[p]) return true;
+  const f=p.split(/\s+/); if(f.length!==5) return false;
+  return f.every((part,i)=>{ if(part==='*'||part==='?') return true;
+    const [lo,hi]=CRON_RANGES[i];
+    return part.split(',').every(tok=>{ let m;
+      if((m=tok.match(/^\*(\/(\d+))$/))) return true;
+      if((m=tok.match(/^(\d+)-(\d+)(\/(\d+))?$/))){ let a=+m[1],b=+m[2]; return a>=lo&&b<=hi&&a<=b; }
+      if((m=tok.match(/^(\d+)\/(\d+)$/))){ return +m[1]>=lo&&+m[1]<=hi; }
+      if((m=tok.match(/^(\d+)$/))){ const v=+m[1]; return v>=lo&&v<=hi; }
+      return false;
+    });
+  });
+}
+/* next fire after Date `from` (UTC). Lightweight: steps minute-by-minute, caps at 2 days. */
+function cronNext(expr, from){
+  const presets={'@yearly':'0 0 1 1 *','@annually':'0 0 1 1 *','@monthly':'0 0 1 * *','@weekly':'0 0 * * 0','@daily':'0 0 * * *','@hourly':'0 * * * *','@midnight':'0 0 * * *'};
+  const p=(expr||'').trim(); if(!cronValid(p)) return null;
+  const f=(presets[p]||p).split(/\s+/);
+  const fs=f.map((part,idx)=>{ const [lo,hi]=CRON_RANGES[idx]; const out=new Set();
+    (part==='*'||part==='?'?'*/1':part).split(',').forEach(tok=>{ let m;
+      if((m=tok.match(/^\*(\/(\d+))?$/))){ let step=+(m[2]||1); for(let v=lo;v<=hi;v+=step) out.add(v); return; }
+      if((m=tok.match(/^(\d+)-(\d+)(\/(\d+))?$/))){ let a=+m[1],b=+m[2],step=+(m[4]||1); for(let v=a;v<=b;v+=step) out.add(v); return; }
+      if((m=tok.match(/^(\d+)\/(\d+)$/))){ let a=+m[1],step=+m[2]; for(let v=a;v<=hi;v+=step) out.add(v); return; }
+      out.add(+tok);
+    });
+    if(idx===4){ if(out.has(7)) out.add(0); if(out.has(0)) out.add(7); }
+    return out; });
+  const d=new Date(from.getTime()); d.setUTCSeconds(0,0); d.setUTCMinutes(d.getUTCMinutes()+1);
+  const cap=from.getTime()+2*864e5;
+  while(d.getTime()<=cap){ if(fs[0].has(d.getUTCMinutes())&&fs[1].has(d.getUTCHours())&&fs[2].has(d.getUTCDate())&&fs[3].has(d.getUTCMonth()+1)&&fs[4].has(d.getUTCDay())) return d; d.setUTCMinutes(d.getUTCMinutes()+1); }
+  return null;
+}
+function fmtTime(date){ if(!date) return '—'; return String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0'); }
+const NOW=new Date('2026-07-02T07:41:00');
+const loopNext = l => l.active ? cronNext(l.cron, NOW) : null;
+const k = n => n>=1e6? (n/1e6).toFixed(1)+'M' : n>=1e3? (n/1e3).toFixed(0)+'k' : ''+n;
+
+/* ============ shared header ============ */
+function header(){
+  const gates=gatedLoops();
+  const badge = gates.length
+    ? `<span class="gates-badge" data-act="open-next-gate"><span class="gdot"></span> ${gates.length} need${gates.length>1?'':''} decision →</span>`
+    : `<span class="gates-badge zero"><span class="gdot"></span> no gates pending</span>`;
+  return `
+  <div class="topbar">
+    <span class="brand">⇆ loop-dashboard <span class="mut">· prototype</span></span>
+    <span class="pill on">pi-ramid @ 127.0.0.1:7433</span>
+    ${badge}
+    <span class="mut">${LOOPS.length} loops · ${LOOPS.filter(l=>l.active).length} active · cadence running</span>
+    <div class="spacer"></div>
+    <button class="btn" data-act="new-loop">+ Loop</button>
+    <button class="btn" data-act="new-pattern">+ Pattern</button>
+    <button class="btn" data-act="validate-all">Validate all</button>
+  </div>`;
+}
+
+/* ============ Variant A — Lifecycle board ============ */
+function VariantA(){
+  const cols=[['Scheduled','sched'],['Running','running'],['Verifying','verify'],['Human gate','gate'],['Completed','done']];
+  const col = l => { if(!l.active) return 'done'; const p=phaseOf(l); return p==='running'?'running':p==='gate'?'gate':'sched'; };
+  const card = l => {
+    const P=regById(l.pat)||{};
+    const gated = l.active && phaseOf(l)==='gate';
+    const attrs = gated ? `data-act="open-gate" data-gate-id="${l.id}"` : '';
+    return `<div class="card ${gated?'gated':''}" ${attrs}>
+      <div class="ttl">${norm(l.pat)} <span class="tag risk-${P.risk||'?'}">${P.risk||'?'}</span></div>
+      <div class="row"><span>${l.id}</span><span>next ${fmtTime(loopNext(l))}</span></div>
+      <div class="row"><span class="mono">${l.trigger==='piramid'?'→ pi-ramid':'→ pi'}</span>
+        <span class="mono"><code>${l.cron}</code></span></div>
+      <div class="row"><span>tokens</span><span class="mono">${k(l.toks)}/${k(l.cap)}</span></div>
+      <div class="bar"><i style="width:${Math.min(100,l.toks/l.cap*100)}%"></i></div>
+      <div class="runs">${l.runs.map(r=>`<i class="i-${r}"></i>`).join('')}</div>
+      <div class="row"><span class="mut">gate</span><span style="color:var(--${gated?'gate':'mut'})">${l.gate}${gated?' ⚠':''}</span></div>
+    </div>`;};
+  let board='';
+  const buckets={sched:[],running:[],gate:[],done:[]};
+  LOOPS.forEach(l=>buckets[col(l)].push(l));
+  const order=[['Scheduled',buckets.sched],['Running',buckets.running],['Human gate',buckets.gate],['Completed',buckets.done]];
+  return header()+`<div class="board">
+    ${order.map(([name,items])=>`
+      <div class="col"><h3>${name} <span class="ct">${items.length}</span></h3>
+      <div class="body">${items.map(card).join('')}</div></div>`).join('')}
+  </div>`;
+}
+VariantA.title='Lifecycle board';
+
+/* ============ Variant B — Cadence timeline ============ */
+function pulseHTML(kind,title){return `<div class="pulse ${kind}" title="${HI(title)}"></div>`;}
+function VariantB(){
+  // axis spans 07:00 → 07:00 next day (24h window starting near NOW=07:41)
+  const winStart=7; // hour
+  const pos = (h)=>`left:${(((h-winStart)%24+24)%24/24*100).toFixed(2)}%`;
+  const track = l => {
+    const P=regById(l.pat)||{};
+    const ticks=Array.from({length:24},()=>'<i></i>').join('');
+    const pulses=[];
+    // decorative past fires from run history, spread across early window
+    const spreads=l.active?(l.id==='LOOP-02'?[8,8.5,9,9.5,10]:l.id==='LOOP-03'?[8,11,14,17,20]:[9,15,20]):[];
+    spreads.forEach((h,i)=>{ const r=l.runs[i%l.runs.length]; const kind=r==='fail'?'fail':r==='gate'?'gate':'done'; pulses.push(pulseHTML(kind,`run ${i+1}: ${r}`)); });
+    // next fire from cron
+    if(l.active){
+      const nf=loopNext(l); const hh=nf?nf.getHours()+nf.getMinutes()/60:9;
+      pulses.push(`<div class="pulse next" style="${pos(hh)}" title="next fire: ${fmtTime(nf)} · cron ${l.cron}"></div>`);
+    }
+    return `<div class="track">
+      <div class="meta">
+        <div class="ttl">${norm(l.pat)} ${l.active?'':'<span class="pill off" style="margin-left:6px">paused</span>'}</div>
+        <div class="sub">${l.id} · <code>${l.cron}</code> · ${l.trigger==='piramid'?'pi-ramid':'pi'} · ${l.lastGoal}</div>
+        <div class="sub">tokens ${k(l.toks)}/${k(l.cap)} · risk <span class="risk-${P.risk||'?'}">${P.risk||'?'}</span> · next ${fmtTime(loopNext(l))}</div>
+      </div>
+      <div class="lane">
+        <div class="axis">${ticks}</div>
+        <div class="now" style="${pos(7.68)}"></div>
+        ${pulses.join('')}
+      </div>
+    </div>`;
+  };
+  return header()+`<div class="rail">
+    <div class="head">
+      <h3>Cadence — next 24h</h3>
+      <div class="mut">⌚ now 07:41 · pulses from cron (UTC)</div>
+    </div>
+    <div class="ruler"><div></div><div class="ticks">
+      ${Array.from({length:8},(_,i)=>`<i>${String((7+i*3)%24).padStart(2,'0')}:00</i>`).join('')}
+    </div></div>
+    <div class="tracks">${LOOPS.map(track).join('')}</div>
+    <div class="legend">
+      <span class="leg"><span class="pulse done" style="position:static"></span> completed run</span>
+      <span class="leg"><span class="pulse next" style="position:static"></span> next fire</span>
+      <span class="leg"><span class="pulse gate" style="position:static"></span> hit human gate</span>
+      <span class="leg"><span class="pulse fail" style="position:static"></span> failure / escalate</span>
+      <span class="leg"><span style="display:inline-block;width:2px;height:14px;background:var(--accent)"></span> now</span>
+    </div>
+  </div>`;
+}
+VariantB.title='Cadence timeline';
+
+/* ============ Variant C — YAML authoring console ============ */
+function loopYaml(loop){
+  const P=regById(loop.pat)||{};
+  return `# loops/${loop.pat}-${loop.id}.yaml
+version: 1
+id: ${loop.id}
+pattern: ${loop.pat}            # references patterns/registry.yaml
+active: ${loop.active}
+cron: "${loop.cron}"           # 5-field cron, UTC (GitHub-Actions style)
+autonomy: ${P.week_one_mode||'L1'}   # L1 report → L2 assisted → L3 unattended
+trigger: ${loop.trigger}       # piramid goal | pi direct
+goal: |
+  Maintain the ${norm(loop.pat)} loop for this repo.
+project: /Users/heru/Code/piramid
+human_gates: [${P.human_gates?P.human_gates.join(', '):loop.gate}]
+token:
+  daily_cap: ${loop.cap}
+  early_exit_required: ${!!(P.cost&&P.cost.early_exit_required)}
+last_goal: ${loop.lastGoal}
+`;
+}
+function patternYaml(p){
+  const c=p.cost||{};
+  return `# patterns/${p.id}.yaml  (registry entry)
+id: ${p.id}
+name: ${p.name}
+file: ${p.file}
+goal: |
+  ${p.goal}
+cadence: "${p.cadence}"        # descriptive range; loops supply real cron
+risk: ${p.risk}
+tools: [${(p.tools||[]).join(', ')}]
+skills: [${(p.skills||[]).join(', ')}]
+state: ${p.state}
+phases: [${(p.phases||[]).join(', ')}]
+human_gates: [${(p.human_gates||[]).join(', ')}]
+week_one_mode: ${p.week_one_mode||'L1'}
+token_cost: ${p.token_cost||'low'}
+cost:
+  tokens_noop: ${c.tokens_noop||0}
+  tokens_report: ${c.tokens_report||0}
+  tokens_action: ${c.tokens_action||0}
+  suggested_daily_cap: ${c.suggested_daily_cap||0}
+  early_exit_required: ${!!c.early_exit_required}
+`;
+}
+function VariantC(){
+  const sel=LOOPS.find(l=>l.pat==='post-merge-cleanup') || LOOPS[0]; // focused PoC story: post-merge-cleanup + pr-maintainer
+  const P=regById(sel.pat)||{};
+  return header()+`<div class="console">
+    <div class="tree">
+      <div class="grp">loops/ · click to edit</div>
+      ${LOOPS.map(l=>`<div class="f ${l.id===sel.id?'sel':''}" data-edit-loop="${l.id}">
+        <span class="ic">${l.active?'◉':'◌'}</span> ${l.pat}-${l.id}.yaml</div>`).join('')}
+      <div class="grp">patterns/ (registry) · click to edit</div>
+      ${STATE.registry.map(p=>`<div class="f" data-edit-pat="${p.id}"><span class="ic">▤</span> ${p.id}.yaml</div>`).join('')}
+      <div class="grp" style="margin-top:14px"><button class="btn" data-act="new-loop" style="width:100%">+ loop</button></div>
+      <div class="grp" style="margin:6px 0"><button class="btn" data-act="new-pattern" style="width:100%">+ pattern</button></div>
+    </div>
+    <div class="editor">
+      <div class="tabs">
+        <div class="tab act">loops/${sel.pat}-${sel.id}.yaml</div>
+        <div class="tab">registry/registry.yaml</div>
+        <div class="tab">config.yaml</div>
+      </div>
+      <div class="code"><pre style="margin:0">${HI(loopYaml(sel))}</pre></div>
+      <div class="foot">
+        <button class="btn" data-edit-loop="${sel.id}">Edit loop</button>
+        <button class="btn" data-edit-pat="${sel.pat}">Edit pattern</button>
+        <span class="mut" style="font-size:12px">✓ schema valid · next fire ${fmtTime(loopNext(sel))}</span>
+      </div>
+    </div>
+    <div class="inspect">
+      <h3>live · ${sel.id}</h3>
+      <div class="blk"><div class="t">current goal</div>
+        <div class="mono">${sel.lastGoal}</div>
+        <div class="mut" style="font-size:11px">→ ${sel.trigger==='piramid'?'pi-ramid enqueue':'pi'} · status VERIFYING</div>
+        <div class="mut" style="font-size:11px"><code>${sel.cron}</code> · next ${fmtTime(loopNext(sel))}</div>
+      </div>
+      <div class="blk"><div class="t">attempts</div>
+        <div class="runs">${sel.runs.map(r=>`<i class="i-${r}"></i>`).join('')}
+        <span class="mut" style="margin-left:8px;font-size:11px">pass ${sel.runs.filter(r=>r==='pass').length}/${sel.runs.length}</span></div>
+      <div class="mut" style="font-size:11px;margin-top:4px">tokens ${k(sel.toks)}/${k(sel.cap)} · ${(sel.toks/sel.cap*100).toFixed(0)}% of cap</div>
+      </div>
+      <div class="blk"><div class="t">human gate</div>
+        <span class="gate-chip">${sel.gate}</span><span class="mut" style="font-size:11px">awaiting human review → escalate</span>
+      </div>
+      <div class="blk"><div class="t">recent log</div>
+<div class="log"><span class="lvl">[21:00]</span> post-merge-cleanup: scan merged PRs
+<span class="lvl">[21:01]</span> pr-maintainer: enumerate PR #182 review threads
+<span class="ok">[21:02] classified: 2 actionable · 1 informational</span>
+<span class="lvl">[21:03]</span> route-item: README link fix queued as minimal-fix
+<span class="err">[21:04] gate: unresolved-feedback · internal/api.go:124</span>
+<span class="err">[21:04] paused — choose Approve, Route, Defer, or Reject</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+VariantC.title='YAML authoring console';
+
+/* ============ router / switcher ============ */
+const VARIANTS={A:VariantA,B:VariantB,C:VariantC};
+const keys=['A','B','C'];
+const app=document.getElementById('app');
+const label=document.getElementById('slabel');
+let cur=new URLSearchParams(location.search).get('variant')||'A';
+if(!(cur in VARIANTS))cur='A';
+function render(){ app.innerHTML=VARIANTS[cur](); label.textContent=`${cur} — ${VARIANTS[cur].title || VARIANTS[cur].name}`; }
+function go(d){ let i=keys.indexOf(cur); i=(i+d+keys.length)%keys.length; cur=keys[i]; const u=new URL(location); u.searchParams.set('variant',cur); history.replaceState(null,'',u); render(); }
+document.getElementById('prev').onclick=()=>go(-1);
+document.getElementById('next').onclick=()=>go(1);
+window.addEventListener('keydown',e=>{
+  const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+  if(e.key==='ArrowLeft')go(-1); if(e.key==='ArrowRight')go(1);
+});
+const toast=document.createElement('div');toast.className='toast';document.body.appendChild(toast);
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200);}
+
+/* ============ New-loop modal + validators ============ */
+const MODAL=document.createElement('div');MODAL.id='modal';
+MODAL.innerHTML=`
+<div class="sheet">
+  <div class="sh"><h3 id="modal-title">+ New loop</h3><button class="btn" data-act="close-modal" style="padding:2px 9px">✕</button></div>
+  <div class="body">
+    <div class="mtabs" style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn mtab" data-mode="loop">Loop</button>
+      <button class="btn mtab" data-mode="pattern">Pattern</button>
+    </div>
+    <div class="edwrap">
+      <textarea id="yamledit" spellcheck="false"></textarea>
+      <div class="vbox">
+        <div class="vh">validator</div>
+        <div id="vrows"></div>
+        <div class="verrs" id="verrs"></div>
+        <div class="vok-msg" id="vok" style="display:none">✓ schema valid · ready to add</div>
+      </div>
+    </div>
+    <div class="mut" id="modal-hint" style="margin-top:10px;font-size:11px"></div>
+  </div>
+  <div class="sb">
+    <button class="btn" data-act="load-template">Load template</button>
+    <button class="btn" data-act="validate-now">Validate</button>
+    <div style="flex:1"></div>
+    <button class="btn" data-act="close-modal">Cancel</button>
+    <button class="btn" id="add-btn" data-act="commit" disabled style="opacity:.5">Add loop</button>
+  </div>
+</div>`;
+document.body.appendChild(MODAL);
+
+let MODAL_MODE='loop';          // 'loop' | 'pattern' — drives template/validator/adder
+let EDIT_TARGET=null;          // {kind,id} when editing an existing entry
+
+function loopTemplate(existing){
+  const ids=STATE.registry.map(p=>p.id).join(', ');
+  if(existing){ const l=STATE.loops.find(x=>x.id===existing); if(l){ const P=regById(l.pat)||{}; return `# loops/${l.pat}-${l.id}.yaml\nversion: 1\nid: ${l.id}\npattern: ${l.pat}\nactive: ${l.active}\ncron: "${l.cron}"\nautonomy: ${P.week_one_mode||'L1'}\ntrigger: ${l.trigger}\ngoal: |\n  Maintain the ${norm(l.pat)} loop for this repo.\nproject: /Users/heru/Code/piramid\nhuman_gates: [${(P.human_gates||[]).join(', ')||l.gate}]\ntoken:\n  daily_cap: ${l.cap}\n`; } }
+  return `# loops/post-merge-cleanup.yaml\nversion: 1\n# id: LOOP-08          # leave blank to auto-assign\npattern: post-merge-cleanup   # one of: ${ids} (or a custom pattern id)\nactive: true\ncron: "0 21 * * *"       # 5-field cron, UTC — 21:00 daily (GitHub-Actions style; */n, ranges a-b, steps a-b/n)\nautonomy: L1             # L1 report | L2 assisted | L3 unattended\ntrigger: piramid         # piramid goal | pi direct\ngoal: |\n  After each merge to main, scan follow-up tech debt and shepherd merged PRs\n  through outstanding review feedback using the pr-maintainer skill (gh).\nproject: /Users/heru/Code/piramid\nhuman_gates: [architectural-debt, feature-flags, large-diffs, unresolved-feedback]\ntoken:\n  daily_cap: 200000\n`;
+}
+function patternTemplate(existing){
+  if(existing){ const p=regById(existing); if(p){ return '# patterns/'+p.id+'.yaml  (registry entry)\n'+patternYaml(p); } }
+  return `# patterns/post-merge-cleanup-pr-maintainer.yaml\n# registry entry — schema: patterns/registry.schema.json\nid: post-merge-cleanup-pr-maintainer   # ^[a-z][a-z0-9-]*$, must be unique\nname: Post-Merge Cleanup + PR Maintainer # ≥ 3 chars\nfile: post-merge-cleanup-pr-maintainer.md\ngoal: |\n  Follow-up tech debt and cleanup after merges to main, shepherding each merged\n  PR through review feedback via the pr-maintainer skill.\ncadence: "1d-6h"        # descriptive range; loop instances supply real cron\nrisk: low                # low | medium | high\ntools: [claude-code, github-actions]\nskills: [post-merge-scan, minimal-fix, pr-maintainer]\nstate: post-merge-pr-maintainer-state.md\nphases: [scan-merges, enumerate-threads, route-item, fix-small, reply-resolve, ticket-large]\nhuman_gates: [architectural-debt, feature-flags, large-diffs, unresolved-feedback]\nweek_one_mode: L1        # L1 | L2 | L3\ntoken_cost: low          # low | medium | high | very-high\ncost:\n  tokens_noop: 5000\n  tokens_report: 40000\n  tokens_action: 150000\n  suggested_daily_cap: 200000\n  early_exit_required: false\n`;
+}
+
+const HINTS={
+  loop:'Loop instance — required: <code>version, pattern, cron, autonomy, trigger, goal, project, human_gates, token.daily_cap</code>. <code>cron</code> is 5-field UTC (GitHub-Actions style). <code>pattern</code> must exist in the registry or be a custom id you also add as a pattern entry.',
+  pattern:'Pattern registry entry — schema: <code>registry.schema.json</code>. Required: <code>id, name, file, goal, cadence, risk, tools, skills, state, phases, human_gates, week_one_mode, token_cost</code>. Optional: <code>cost</code> with its 5 sub-keys.'
+};
+function openModal(mode,target){
+  MODAL_MODE=mode; EDIT_TARGET=target||null;
+  MODAL.classList.add('open');
+  syncModeUI();
+  const ta=document.getElementById('yamledit');
+  ta.value = mode==='pattern' ? patternTemplate(target&&target.id) : loopTemplate(target&&target.id);
+  document.getElementById('modal-hint').innerHTML=HINTS[mode];
+  runValidate();
+  ta.oninput=runValidate;
+}
+function syncModeUI(){
+  document.getElementById('modal-title').textContent = (EDIT_TARGET?'Edit':'+ New')+' '+(MODAL_MODE==='pattern'?'pattern':'loop');
+  document.getElementById('add-btn').textContent = EDIT_TARGET?'Save':'Add '+(MODAL_MODE==='pattern'?'pattern':'loop');
+  document.querySelectorAll('.mtab').forEach(b=>{ b.style.borderColor = b.dataset.mode===MODAL_MODE?'var(--accent)':'var(--line)'; b.style.color = b.dataset.mode===MODAL_MODE?'var(--accent)':'var(--mut)'; });
+}
+function closeModal(){MODAL.classList.remove('open');}
+
+// minimal field extraction (throwaway — regex over raw YAML text)
+function line(raw,key){const m=raw.match(new RegExp('^[\\t ]*'+key+'[\\t ]*:[\\t ]*(.*?)\\s*$','m'));if(!m)return undefined;let s=m[1];const ci=s.search(/(^|\s)#/);if(ci>=0)s=s.slice(0,ci);s=s.trim();if((s.startsWith('"')&&s.endsWith('"'))||(s.startsWith("'")&&s.endsWith("'")))s=s.slice(1,-1);return s||undefined;}
+function arr(raw,key){const v=line(raw,key);if(v==null)return undefined;const m=v.match(/^\[(.*)\]$/);return m?m[1].split(',').map(s=>s.trim()).filter(Boolean):undefined;}
+function block(raw,key){const idx=raw.search(new RegExp('^[\\t ]*'+key+'[\\t ]*:[\\t ]*\\|','m'));if(idx<0)return undefined;const after=raw.slice(raw.indexOf('\n',idx)+1);const lines=after.split('\n');const body=[];for(const l of lines){if(/^[^ \t#]/.test(l)&&l.trim())break;if(l.trim()===''){body.push('');continue;}body.push(l);}return body.join('\n').trim();}
+function num(raw,key){const m=raw.match(new RegExp('^[\\t ]*'+key+'[\\t ]*:[\\t ]*([0-9]+)','m'));return m?parseInt(m[1],10):undefined;}
+
+function paintValidate(checks,errs){
+  document.getElementById('vrows').innerHTML=checks.map(c=>`<div class="vrow"><span class="k">${c.key}</span><span class="${c.ok?'vok':'verr'}">${c.ok?'✓':'✗'}</span></div>`).join('');
+  document.getElementById('verrs').innerHTML=errs.map(e=>`<div class="verr-li">✗ ${HI(e)}</div>`).join('');
+  const clean=errs.length===0;
+  const ok=document.getElementById('vok'), addBtn=document.getElementById('add-btn');
+  ok.style.display=clean?'block':'none'; addBtn.disabled=!clean; addBtn.style.opacity=clean?1:.5;
+  return clean;
+}
+function runValidate(){ return MODAL_MODE==='pattern' ? validatePatternYaml() : validateLoopYaml(); }
+
+const RISK=['low','medium','high'], WEEK=['L1','L2','L3'], TCOST=['low','medium','high','very-high'], TOOLS=['grok','claude-code','codex','openclaw','opencode','github-actions','cursor','windsurf','aider'];
+function validateLoopYaml(){
+  const raw=document.getElementById('yamledit').value||''; const checks=[],errs=[];
+  const v=line(raw,'version'); checks.push({key:'version',ok:v==='1'}); if(v==null)errs.push('version: required'); else if(v!=='1')errs.push('version: must be 1');
+  const pat=line(raw,'pattern'); const known=pat&&regById(pat); checks.push({key:'pattern',ok:!!pat}); if(!pat)errs.push('pattern: required'); else if(!known)errs.push('pattern: unknown id — add it as a pattern entry first');
+  const cron=line(raw,'cron'); const cronOk=cronValid(cron); checks.push({key:'cron',ok:cronOk}); if(!cron)errs.push('cron: required'); else if(!cronOk)errs.push('cron: invalid 5-field expression (try "*/15 * * * *")'); else checks.push({key:'cron.next',ok:true,extra:'→ '+fmtTime(cronNext(cron,NOW))});
+  const aut=line(raw,'autonomy'); const autOk=WEEK.includes(aut); checks.push({key:'autonomy',ok:autOk}); if(!aut)errs.push('autonomy: required'); else if(!autOk)errs.push('autonomy: must be L1, L2, or L3');
+  const trg=line(raw,'trigger'); const trgOk=['piramid','pi'].includes(trg); checks.push({key:'trigger',ok:trgOk}); if(!trg)errs.push('trigger: required'); else if(!trgOk)errs.push('trigger: must be piramid or pi');
+  const goal=block(raw,'goal'); checks.push({key:'goal',ok:!!goal}); if(!goal)errs.push('goal: required (non-empty block)');
+  const proj=line(raw,'project'); const projOk=!!proj&&proj.startsWith('/'); checks.push({key:'project',ok:projOk}); if(!proj)errs.push('project: required'); else if(!projOk)errs.push('project: must be an absolute path');
+  const gates=arr(raw,'human_gates'); checks.push({key:'human_gates',ok:!!(gates&&gates.length)}); if(!gates||!gates.length)errs.push('human_gates: required (non-empty)');
+  const cap=num(raw,'daily_cap'); const capOk=cap!=null&&cap>0; checks.push({key:'token.daily_cap',ok:capOk}); if(cap==null)errs.push('token.daily_cap: required'); else if(cap<=0)errs.push('token.daily_cap: must be positive');
+  const id=line(raw,'id'); if(id){const dup=STATE.loops.some(l=>l.id===id&&l.id!==EDIT_TARGET?.id); checks.push({key:'id (unique)',ok:!dup}); if(dup)errs.push('id: already in use');} else checks.push({key:'id (auto)',ok:true});
+  return paintValidate(checks,errs);
+}
+function validatePatternYaml(){
+  const raw=document.getElementById('yamledit').value||''; const checks=[],errs=[];
+  const id=line(raw,'id'); const idOk=!!id&&/^[a-z][a-z0-9-]*$/.test(id); checks.push({key:'id',ok:idOk}); if(!id)errs.push('id: required'); else if(!/^[a-z][a-z0-9-]*$/.test(id))errs.push('id: must match ^[a-z][a-z0-9-]*$'); else { const dup=STATE.registry.some(p=>p.id===id&&p.id!==EDIT_TARGET?.id); checks.push({key:'id (unique)',ok:!dup}); if(dup)errs.push('id: pattern id already in registry'); }
+  const name=line(raw,'name'); checks.push({key:'name',ok:!!(name&&name.length>=3)}); if(!name)errs.push('name: required'); else if(name.length<3)errs.push('name: min 3 chars');
+  const file=line(raw,'file'); const fileOk=!!file&&/^[a-z0-9-]+\.md$/.test(file); checks.push({key:'file',ok:fileOk}); if(!file)errs.push('file: required'); else if(!fileOk)errs.push('file: must match ^[a-z0-9-]+\\.md$');
+  const goal=block(raw,'goal'); const goalOk=!!(goal&&goal.length>=10); checks.push({key:'goal',ok:goalOk}); if(!goal)errs.push('goal: required (non-empty block)'); else if(goal.length<10)errs.push('goal: min 10 chars');
+  const cad=line(raw,'cadence'); const cadOk=!!cad&&/^[0-9]+[mhd](-[0-9]+[mhd])?$/.test(cad); checks.push({key:'cadence',ok:cadOk}); if(!cad)errs.push('cadence: required'); else if(!cadOk)errs.push('cadence: must match ^[0-9]+[mhd](-[0-9]+[mhd])?$ (e.g. 1d-2h)');
+  const risk=line(raw,'risk'); const riskOk=RISK.includes(risk); checks.push({key:'risk',ok:riskOk}); if(!risk)errs.push('risk: required'); else if(!riskOk)errs.push('risk: must be '+RISK.join(', '));
+  const tools=arr(raw,'tools'); const toolsOk=!!(tools&&tools.length)&&tools.every(t=>TOOLS.includes(t)); checks.push({key:'tools',ok:toolsOk}); if(!tools||!tools.length)errs.push('tools: required (non-empty)'); else if(!tools.every(t=>TOOLS.includes(t)))errs.push('tools: must be from '+TOOLS.join(', '));
+  const skills=arr(raw,'skills'); const skillsOk=!!(skills&&skills.length)&&skills.every(s=>s.length>=2); checks.push({key:'skills',ok:skillsOk}); if(!skills||!skills.length)errs.push('skills: required (≥1)'); else if(!skills.every(s=>s.length>=2))errs.push('skills: each must be ≥2 chars');
+  const state=line(raw,'state'); const stateOk=!!state&&/^[A-Za-z0-9-]+\.md$/.test(state); checks.push({key:'state',ok:stateOk}); if(!state)errs.push('state: required'); else if(!stateOk)errs.push('state: must match ^[A-Za-z0-9-]+\\.md$');
+  const phases=arr(raw,'phases'); const phasesOk=!!(phases&&phases.length>=2); checks.push({key:'phases',ok:phasesOk}); if(!phases||phases.length<2)errs.push('phases: required (≥2)');
+  const gates=arr(raw,'human_gates'); checks.push({key:'human_gates',ok:!!(gates&&gates.length)}); if(!gates||!gates.length)errs.push('human_gates: required (≥1)');
+  const wom=line(raw,'week_one_mode'); const womOk=WEEK.includes(wom); checks.push({key:'week_one_mode',ok:womOk}); if(!wom)errs.push('week_one_mode: required'); else if(!womOk)errs.push('week_one_mode: must be '+WEEK.join(', '));
+  const tc=line(raw,'token_cost'); const tcOk=TCOST.includes(tc); checks.push({key:'token_cost',ok:tcOk}); if(!tc)errs.push('token_cost: required'); else if(!tcOk)errs.push('token_cost: must be '+TCOST.join(', '));
+  // cost block (optional, but if present, all 5 sub-keys required)
+  const noop=num(raw,'tokens_noop'), rep=num(raw,'tokens_report'), act=num(raw,'tokens_action'), cap=num(raw,'suggested_daily_cap'), eex=line(raw,'early_exit_required');
+  const hasCost = raw.search(/^[\t ]*cost[\t ]*:/m)>=0;
+  if(hasCost){ const costOk = noop>=1000 && rep>=1000 && act>=1000 && cap>=10000 && (eex==='true'||eex==='false'); checks.push({key:'cost.*',ok:costOk}); if(!costOk){ if(noop<1000)errs.push('cost.tokens_noop: ≥1000'); if(rep<1000)errs.push('cost.tokens_report: ≥1000'); if(act<1000)errs.push('cost.tokens_action: ≥1000'); if(cap<10000)errs.push('cost.suggested_daily_cap: ≥10000'); if(eex!=='true'&&eex!=='false')errs.push('cost.early_exit_required: must be true/false'); } } else checks.push({key:'cost (optional)',ok:true});
+  return paintValidate(checks,errs);
+}
+
+function commitYaml(){
+  if(!runValidate())return;
+  if(MODAL_MODE==='pattern') return commitPattern();
+  return commitLoop();
+}
+function commitLoop(){
+  const raw=document.getElementById('yamledit').value||'';
+  const pat=line(raw,'pattern');
+  const id=line(raw,'id')||nextLoopId();
+  let base=id,n=1;while(STATE.loops.some(l=>l.id===id&&l.id!==EDIT_TARGET?.id)){id=base+'-'+(++n);}
+  const loop={ id, pat,
+    active:(line(raw,'active')||'true')==='true',
+    cron:line(raw,'cron'),
+    trigger:line(raw,'trigger')||'piramid',
+    lastGoal:'—', runs:[], toks:0,
+    cap:num(raw,'daily_cap'),
+    gate:(arr(raw,'human_gates')||[])[0]||'review', };
+  if(EDIT_TARGET?.kind==='loop'){ const i=STATE.loops.findIndex(l=>l.id===EDIT_TARGET.id); if(i>=0) STATE.loops[i]={...STATE.loops[i],...loop}; }
+  else STATE.loops.push(loop);
+  console.log('[loop-dashboard] loop committed; state:', JSON.parse(JSON.stringify(STATE.loops)));
+  closeModal(); render();
+  showToast(`${EDIT_TARGET?'Saved':'Added'} ${id} · ${norm(pat)}`);
+}
+function commitPattern(){
+  const raw=document.getElementById('yamledit').value||'';
+  const id=line(raw,'id');
+  const p={ id, name:line(raw,'name'), file:line(raw,'file'), goal:block(raw,'goal'),
+    cadence:line(raw,'cadence'), risk:line(raw,'risk'), tools:arr(raw,'tools')||[], skills:arr(raw,'skills')||[],
+    state:line(raw,'state'), phases:arr(raw,'phases')||[], human_gates:arr(raw,'human_gates')||[],
+    week_one_mode:line(raw,'week_one_mode'), token_cost:line(raw,'token_cost'),
+    cost:{ tokens_noop:num(raw,'tokens_noop')||5000, tokens_report:num(raw,'tokens_report')||50000, tokens_action:num(raw,'tokens_action')||200000, suggested_daily_cap:num(raw,'suggested_daily_cap')||200000, early_exit_required:(line(raw,'early_exit_required')==='true') } };
+  if(EDIT_TARGET?.kind==='pattern'){ const i=STATE.registry.findIndex(x=>x.id===EDIT_TARGET.id); if(i>=0) STATE.registry[i]={...STATE.registry[i],...p}; }
+  else STATE.registry.push(p);
+  console.log('[loop-dashboard] pattern committed; registry:', JSON.parse(JSON.stringify(STATE.registry.map(x=>x.id))));
+  closeModal(); render();
+  showToast(`${EDIT_TARGET?'Saved':'Added'} pattern ${id}`);
+}
+
+// event delegation — header buttons, modal buttons, tree edits, mode tabs
+window.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]'); const mid=e.target.closest('[data-mode]');
+  const el=e.target.closest('[data-edit-loop]'); const ep=e.target.closest('[data-edit-pat]');
+  const gd=e.target.closest('[data-gate-id]'); const dct=e.target.closest('[data-decision]');
+  if(el){ openModal('loop',{kind:'loop',id:el.dataset.editLoop}); return; }
+  if(ep){ openModal('pattern',{kind:'pattern',id:ep.dataset.editPat}); return; }
+  if(gd && gd.dataset.act==='open-gate'){ openGateModal(gd.dataset.gateId); return; }
+  if(dct){ resolveGate(dct.dataset.decision); return; }
+  if(mid){ MODAL_MODE=mid.dataset.mode; EDIT_TARGET=null; syncModeUI(); document.getElementById('yamledit').value = MODAL_MODE==='pattern'?patternTemplate():loopTemplate(); document.getElementById('modal-hint').innerHTML=HINTS[MODAL_MODE]; runValidate(); return; }
+  if(!b)return;
+  switch(b.dataset.act){
+    case 'new-loop':openModal('loop');break;
+    case 'new-pattern':openModal('pattern');break;
+    case 'close-modal':closeModal();closeGateModal();break;
+    case 'open-next-gate':{ const gs=gatedLoops(); const g=gs.find(x=>x.pat==='post-merge-cleanup')||gs[0]; if(g) openGateModal(g.id); break; }
+    case 'load-template':document.getElementById('yamledit').value = MODAL_MODE==='pattern'?patternTemplate():loopTemplate();runValidate();break;
+    case 'validate-now':runValidate();break;
+    case 'validate-all':runValidateAll();break;
+    case 'commit':commitYaml();break;
+  }
+});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&MODAL.classList.contains('open'))closeModal();});
+
+function runValidateAll(){
+  const badPat=STATE.loops.filter(l=>!regById(l.pat));
+  const badCron=STATE.loops.filter(l=>!cronValid(l.cron));
+  if(badPat.length||badCron.length)showToast(`✗ ${badPat.length} unknown pattern(s), ${badCron.length} bad cron(s)`);
+  else showToast(`✓ all ${STATE.loops.length} loops + ${STATE.registry.length} patterns valid`);
+  console.log('[loop-dashboard] validate-all:', {loops:STATE.loops.map(l=>({id:l.id,pat:l.pat,cron:l.cron})), patterns:STATE.registry.map(p=>p.id)});
+}
+
+/* ============ Human gate modal — pr-maintainer thread ledger + decision ============ */
+const GATE_MODAL=document.createElement('div');GATE_MODAL.id='gatemodal';GATE_MODAL.className='modal-scrim';GATE_MODAL.innerHTML=`
+<div class="sheet">
+  <div class="sh"><h3 id="gate-title">⚠ Human gate</h3><button class="btn" data-act="close-modal" style="padding:2px 9px">✕</button></div>
+  <div class="body" id="gate-body"></div>
+  <div class="sb" id="gate-sb" style="display:none"><button class="btn" data-act="close-modal">Done</button></div>
+</div>`;
+GATE_MODAL.classList.add('modal-scrim');
+document.body.appendChild(GATE_MODAL);
+GATE_MODAL.addEventListener('click',e=>{ if(e.target===GATE_MODAL) closeGateModal(); });
+let GATE_LOOP_ID=null;
+
+function authorTag(t){ return `<span class="auth ${t==='human'?'human':'bot'}">${t==='human'?'human':'bot'}</span>`; }
+function renderThreads(ctx){
+  if(!ctx||!ctx.threads||!ctx.threads.length) return `<div class="mut" style="font-size:12px;padding:8px 0">${ctx?ctx.threadLedger:'no thread ledger'}</div>`;
+  return ctx.threads.map(t=>`<div class="thread">
+    <div class="th-head">
+      <span class="th-loc">${HI(t.loc)}</span>
+      <span class="th-who">by ${HI(t.author)} ${authorTag(t.author_type)} · review of <code>${t.reviewed_commit}</code></span>
+    </div>
+    <div class="th-body">${HI(t.body)}</div>
+    <div class="th-class">${HI(t.klass)}</div>
+  </div>`).join('') + `<div class="mut" style="font-size:11px;margin-top:8px">ledger: ${HI(ctx.threadLedger)}</div>`;
+}
+function openGateModal(id){
+  const l=LOOPS.find(x=>x.id===id); if(!l) return;
+  GATE_LOOP_ID=id;
+  const ctx=gateCtx(l)||{trigger:l.pat,stalledPhase:'?',why:'(no mock context for this gate)',threads:[],threadLedger:'—'};
+  GATE_MODAL.classList.add('open');
+  document.getElementById('gate-title').textContent='⚠ '+l.gate+' · '+l.id;
+  document.getElementById('gate-sb').style.display='none';
+  document.getElementById('gate-body').innerHTML=`
+    <div class="gate-detail">
+      <div class="ctx"><div class="lbl">Trigger</div><div class="val">${HI(ctx.trigger)}</div></div>
+      <div class="ctx"><div class="lbl">Stalled phase</div><div class="val">${ctx.stalledPhase} → ${l.gate}</div></div>
+      <div class="ctx" style="border-bottom:1px solid var(--line)"><div class="lbl">Why it gated</div><div style="font-size:12.5px;line-height:1.6;color:var(--ink)">${HI(ctx.why)}</div></div>
+      <div class="ctx" style="border:0;padding:4px 18px 10px"><div class="lbl">pr-maintainer thread ledger (${ctx.threads?ctx.threads.length:0} threads)</div>${renderThreads(ctx)}</div>
+      <div class="decision">
+        <div class="dlbl">Your decision — each shows the exact gh-action it triggers before you press</div>
+        <div class="decision-grid">
+          <button class="dec-btn" data-decision="approve"><span class="d-name good">Approve & resolve</span><span class="d-act">${GATE_ACTS.approve}</span></button>
+          <button class="dec-btn" data-decision="route"><span class="d-name mut">Route as task</span><span class="d-act">${GATE_ACTS.route}</span></button>
+          <button class="dec-btn" data-decision="defer"><span class="d-name warn">Defer</span><span class="d-act">${GATE_ACTS.defer}</span></button>
+          <button class="dec-btn" data-decision="reject"><span class="d-name bad">Reject</span><span class="d-act">${GATE_ACTS.reject}</span></button>
+        </div>
+        <div class="note-lbl"><span>Reply note</span><span class="hint">becomes the agent's in-thread reply for Route / Reject</span></div>
+        <textarea class="note-box" id="gate-note" placeholder="e.g. Won't change — the %w wrap is intentionally omitted here because…"></textarea>
+      </div>
+    </div>`;
+}
+function closeGateModal(){ GATE_MODAL.classList.remove('open'); GATE_LOOP_ID=null; }
+
+function resolveGate(decision){
+  const l=LOOPS.find(x=>x.id===GATE_LOOP_ID); if(!l) return;
+  const note=(document.getElementById('gate-note')||{}).value||'';
+  const tag = decision==='approve'?'pass':decision==='route'?'wait':decision==='reject'?'reject':'defer';
+  l.runs=[...l.runs, tag];
+  if(decision==='approve'){ l.gate = l.gate+' ✓ resolved'; l.runs=[...l.runs.slice(0,-1),'pass']; }
+  if(decision==='route'){ l.gate = l.gate+' → routed'; }
+  if(decision==='reject'){ l.gate = l.gate+' → rejected'+(note?':':'')+note.slice(0,40); }
+  console.log('[loop-dashboard] gate resolved', { loop:l.id, decision, note:note.slice(0,120), runs:l.runs, gate:l.gate });
+  document.getElementById('gate-body').innerHTML=`
+    <div class="gate-detail">
+      <div class="ctx"><div class="lbl">Decision recorded</div><div class="val" style="color:${decision==='approve'?'var(--good)':decision==='reject'?'var(--bad)':'var(--accent2)'}">${decision.toUpperCase()}</div></div>
+      <div class="ctx"><div class="lbl">${l.id} runs trailing</div><div class="val mono" style="font-size:12px">${l.runs.map(r=>`<i class="i-${r==='wait'?'gate':r==='reject'?'fail':r}"></i>`).join(' ')} ← ${tag}</div></div>
+      ${note?`<div class="ctx"><div class="lbl">Reply sent in-thread</div><div style="font-size:12px;color:var(--ink)">“${HI(note.slice(0,180))}”</div></div>`:''}
+      <div class="ctx"><div class="lbl">pr-maintainer anti-skip ledger</div><div style="font-size:11.5px;color:var(--mut);line-height:1.6">${antiSkipText(decision, l)}</div></div>
+    </div>`;
+  document.getElementById('gate-sb').style.display='flex';
+  render();
+}
+function antiSkipText(d,l){
+  if(d==='approve') return `✓ actionable thread r182c1 → reply + resolve.<br>✓ deferred items listed.<br>ledger: r182c1 replied+resolved · r182c2 routed this pass · r182r1 informational (no reply).`;
+  if(d==='route')   return `→ handed r182c1 to commander as scoped work.<br>→ loop enters RETRY_WAIT until follow-up branch lands.<br>→ thread stays open (not silently dropped).`;
+  if(d==='reject')  return `→ replied “won't change” in-thread on r182c1 with your note.<br>→ thread remains open (not silently resolved).<br>→ loop moves on.`;
+  return `→ snoozed until next cron fire (${l.cron}).<br>→ all threads retain their current classification.`;
+}
+
+render();
+</script>
+</body>
+</html>
