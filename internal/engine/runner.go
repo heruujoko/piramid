@@ -34,7 +34,7 @@ type RunnerStore interface {
 	GetTaskGateLinkage(context.Context, string) (domain.TaskGateLinkage, error)
 	CreateGate(context.Context, domain.Gate) (domain.Gate, error)
 	UpdateFireStatus(context.Context, string, domain.FireStatus, time.Time) error
-	SetTaskStatus(context.Context, string, domain.TaskStatus, time.Time) error
+	GateAttempt(context.Context, storepkg.GateAttemptInput) error
 }
 
 type RoleRuntime struct {
@@ -434,9 +434,12 @@ func (r *Runner) handleGate(
 	if _, err := r.store.CreateGate(ctx, gateRow); err != nil {
 		return r.operationalFailure(ctx, task, attempt, "gate_create", err)
 	}
-	// Park the task as GATED so the resume flow can pick it up; the running
-	// task transition to GATED is allowed by domain.CanTransition.
-	if err := r.store.SetTaskStatus(ctx, task.ID, domain.TaskGated, now); err != nil {
+	// Park the task as GATED so the resume flow can pick it up, park the attempt,
+	// and release the workspace lease atomically -- otherwise ListRunnable skips
+	// the project forever and RecoverActive resurrects the orphaned RUNNING attempt.
+	if err := r.store.GateAttempt(ctx, storepkg.GateAttemptInput{
+		TaskID: task.ID, AttemptID: attempt.ID, Now: now,
+	}); err != nil {
 		return r.operationalFailure(ctx, task, attempt, "task_gated", err)
 	}
 	// Only park a fire when the task has one (loop-scheduler admits fires;

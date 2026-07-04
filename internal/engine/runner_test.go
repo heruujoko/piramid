@@ -445,6 +445,16 @@ func TestRunnerExit42CreatesOpenGateAndSkipsVerifier(t *testing.T) {
 	if task.Status != domain.TaskGated {
 		t.Fatalf("task status = %s, want GATED", task.Status)
 	}
+	// The workspace lease must be released so the resumed task can dispatch
+	// again, and the RUNNING attempt must be parked (GATED) so RecoverActive
+	// does not resurrect it as interrupted on next startup.
+	active, err := fixture.store.ListActiveAttempts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("active attempts = %d, want 0 (lease/attempt not released)", len(active))
+	}
 }
 
 // TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond verifies that the default

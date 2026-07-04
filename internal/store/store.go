@@ -131,6 +131,13 @@ type Store interface {
 	ResolveGate(context.Context, ResolveGateInput) error
 	ResumeGatedTask(context.Context, ResumeGatedTaskInput) error
 	SetTaskStatus(context.Context, string, domain.TaskStatus, time.Time) error
+	GateAttempt(context.Context, GateAttemptInput) error
+}
+
+type GateAttemptInput struct {
+	TaskID    string
+	AttemptID int64
+	Now       time.Time
 }
 
 type ResumeGatedTaskInput struct {

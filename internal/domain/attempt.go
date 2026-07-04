@@ -10,6 +10,7 @@ const (
 	AttemptCompleted   AttemptStatus = "COMPLETED"
 	AttemptFailed      AttemptStatus = "FAILED"
 	AttemptInterrupted AttemptStatus = "INTERRUPTED"
+	AttemptGated       AttemptStatus = "GATED"
 )
 
 type Attempt struct {

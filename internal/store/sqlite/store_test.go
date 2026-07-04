@@ -507,6 +507,75 @@ func TestResumeGatedTaskRejectsNonGatedTask(t *testing.T) {
 	}
 }
 
+func TestGateAttemptReleasesLeaseAndParksAttempt(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	goal, plan := testGoalPlan()
+	plan.Tasks = plan.Tasks[:1]
+	if err := st.AdmitPlan(ctx, goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	// Real StartAttempt so a RUNNING attempt + WRITE workspace_lease exist.
+	attempt, err := st.StartAttempt(ctx, storepkg.StartAttemptInput{
+		TaskID: "TASK-1", WorkerID: "worker-1", Runtime: "pi-cli", StartedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.GateAttempt(ctx, storepkg.GateAttemptInput{
+		TaskID: "TASK-1", AttemptID: attempt.ID, Now: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := st.GetTask(ctx, "TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Status != domain.TaskGated {
+		t.Fatalf("task status = %s, want GATED", view.Status)
+	}
+	var attemptStatus string
+	if err := st.db.QueryRowContext(ctx, "SELECT status FROM attempts WHERE id = ?", attempt.ID).Scan(&attemptStatus); err != nil {
+		t.Fatal(err)
+	}
+	if attemptStatus != string(domain.AttemptGated) {
+		t.Fatalf("attempt status = %s, want GATED", attemptStatus)
+	}
+	// The project must be free of leases so a resumed task can dispatch again.
+	var leaseCount int
+	if err := st.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM workspace_leases WHERE project_path = ?", goal.ProjectPath,
+	).Scan(&leaseCount); err != nil {
+		t.Fatal(err)
+	}
+	if leaseCount != 0 {
+		t.Fatalf("workspace leases = %d, want 0", leaseCount)
+	}
+	// The parked attempt must not be resurrected as interrupted on recovery.
+	active, err := st.ListActiveAttempts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 0 {
+		t.Fatalf("active attempts = %d, want 0", len(active))
+	}
+}
+
+func TestGateAttemptRejectsNonRunningTask(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	taskID := admitSingleTaskForGateTest(t, st, domain.TaskGated)
+
+	err := st.GateAttempt(ctx, storepkg.GateAttemptInput{
+		TaskID: taskID, AttemptID: 1, Now: time.Now().UTC(),
+	})
+	if err == nil || !errors.Is(err, storepkg.ErrInvalidState) {
+		t.Fatalf("error = %v, want ErrInvalidState", err)
+	}
+}
+
 func TestSetTaskStatusFromGated(t *testing.T) {
 	st := openTestStore(t)
 	ctx := context.Background()
