@@ -31,6 +31,7 @@ type RunnerStore interface {
 	MoveToVerification(context.Context, storepkg.FinishExecutionInput) error
 	FinishVerification(context.Context, storepkg.FinishVerificationInput) error
 	RecordOperationalFailure(context.Context, storepkg.OperationalFailureInput) error
+	GetTaskGateLinkage(context.Context, string) (domain.TaskGateLinkage, error)
 	CreateGate(context.Context, domain.Gate) (domain.Gate, error)
 	UpdateFireStatus(context.Context, string, domain.FireStatus, time.Time) error
 }
@@ -169,6 +170,16 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 		return r.operationalFailure(ctx, task, attempt, "attempt_prepare", err)
 	}
 
+	// Derive the authoritative fire/goal linkage from store state once: the
+	// executor receives PIRAMID_FIRE_ID/PIRAMID_GOAL_ID/PIRAMID_LOOP_ID so a real
+	// executor can populate gate.context.md without guessing, and handleGate
+	// later trusts THIS linkage (not the executor-written context) to park the
+	// correct fire -- eliminating the risk of parking the wrong fire.
+	linkage, err := r.store.GetTaskGateLinkage(ctx, task.ID)
+	if err != nil {
+		return r.operationalFailure(ctx, task, attempt, "gate_linkage", err)
+	}
+
 	executorRuntime := r.executorRuntime
 	executorRuntime.Timeout = task.Timeout
 	// Seed from the process environment when the configured executor env is empty,
@@ -178,10 +189,20 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 	if len(baseEnv) == 0 {
 		baseEnv = os.Environ()
 	}
-	executorRuntime.Environment = append(
+	gateEnv := append(
 		append([]string(nil), baseEnv...),
 		"PIRAMID_GATE_CONTEXT="+paths.GateContext,
 	)
+	if linkage.FireID != "" {
+		gateEnv = append(gateEnv, "PIRAMID_FIRE_ID="+linkage.FireID)
+	}
+	if linkage.LoopID != "" {
+		gateEnv = append(gateEnv, "PIRAMID_LOOP_ID="+linkage.LoopID)
+	}
+	if linkage.GoalID != "" {
+		gateEnv = append(gateEnv, "PIRAMID_GOAL_ID="+linkage.GoalID)
+	}
+	executorRuntime.Environment = gateEnv
 	executorResult, err := r.invoke(
 		ctx, r.executor, executorRuntime, task, attempt,
 		executorPrompt, paths.ExecutorPrompt, paths.Stdout, paths.Stderr,
@@ -207,7 +228,7 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 	// PIRAMID_GATE_CONTEXT and wants a human/bot decision before continuing.
 	// Skip verification entirely; open a gate row and park the fire as gated.
 	if executorResult.ExitCode == GateExitCode {
-		return r.handleGate(ctx, task, attempt, paths)
+		return r.handleGate(ctx, task, attempt, paths, linkage)
 	}
 
 	evidence, artifactRecords := discoverArtifacts(task.ProjectPath, task.Outputs)
@@ -368,6 +389,7 @@ func (r *Runner) handleGate(
 	task domain.TaskRecord,
 	attempt domain.Attempt,
 	paths records.AttemptPaths,
+	linkage domain.TaskGateLinkage,
 ) error {
 	content, err := os.ReadFile(paths.GateContext)
 	if err != nil {
@@ -383,10 +405,22 @@ func (r *Runner) handleGate(
 		return r.operationalFailure(ctx, task, attempt, "gate_context_invalid", err)
 	}
 	now := r.now()
+	// The gate row's fire/goal foreign keys come from the store-derived
+	// linkage (authoritative), not from gateContext (executor-supplied and
+	// therefore untrusted for linkage). The parsed gateContext is still stored
+	// verbatim in gate.Context as an audit record of what the executor saw.
+	fireID := linkage.FireID
+	if fireID == "" {
+		fireID = gateContext.FireID
+	}
+	goalID := linkage.GoalID
+	if goalID == "" {
+		goalID = gateContext.GoalID
+	}
 	gateRow := domain.Gate{
 		ID:          r.gateIDGenerator(now),
-		FireID:      gateContext.FireID,
-		GoalID:      gateContext.GoalID,
+		FireID:      fireID,
+		GoalID:      goalID,
 		TaskID:      task.ID,
 		AttemptID:   strconv.FormatInt(attempt.ID, 10),
 		Status:      domain.GateOpen,
@@ -399,8 +433,14 @@ func (r *Runner) handleGate(
 	if _, err := r.store.CreateGate(ctx, gateRow); err != nil {
 		return r.operationalFailure(ctx, task, attempt, "gate_create", err)
 	}
-	if err := r.store.UpdateFireStatus(ctx, gateContext.FireID, domain.FireGated, now); err != nil {
-		return r.operationalFailure(ctx, task, attempt, "fire_gated", err)
+	// Only park a fire when the task has one (loop-scheduler admits fires;
+	// manually-admitted tasks have no fire to park). Trusting linkage.FireID
+	// here means a mis-identified or omitted fire_id in gate.context.md can no
+	// longer park the wrong fire or emit a spurious fire_gated failure.
+	if linkage.FireID != "" {
+		if err := r.store.UpdateFireStatus(ctx, linkage.FireID, domain.FireGated, now); err != nil {
+			return r.operationalFailure(ctx, task, attempt, "fire_gated", err)
+		}
 	}
 	return nil
 }

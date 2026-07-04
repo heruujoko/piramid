@@ -75,8 +75,6 @@ func validate(gc domain.GateContext) error {
 	}{
 		{"gate", gc.Gate},
 		{"phase", gc.Phase},
-		{"loop_id", gc.LoopID},
-		{"fire_id", gc.FireID},
 		{"summary", gc.Summary},
 	}
 	for _, r := range required {

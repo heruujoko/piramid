@@ -124,6 +124,7 @@ type Store interface {
 	UpdateFireStatus(context.Context, string, domain.FireStatus, time.Time) error
 	ListFires(context.Context, string, int) ([]domain.Fire, error)
 	GetLatestFireByLoop(context.Context, string) (domain.Fire, error)
+	GetTaskGateLinkage(context.Context, string) (domain.TaskGateLinkage, error)
 	CreateGate(context.Context, domain.Gate) (domain.Gate, error)
 	GetGate(context.Context, string) (domain.Gate, error)
 	ListOpenGates(context.Context) ([]domain.Gate, error)
