@@ -5,3 +5,6 @@
 *.db-wal
 .DS_Store
 **/.playwright-mcp/
+/.pr-maintainer-loop/
+/.pi/
+/loop-dashboard/pi-session-*.html

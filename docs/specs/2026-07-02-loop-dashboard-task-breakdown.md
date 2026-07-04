@@ -35,9 +35,9 @@
 - [x] M1 Definitions
 - [x] M2 Runtime state
 - [x] M3 Loop scheduler
-- [ ] M4 Mid-run gate
-- [ ] M5 Resume
-- [ ] M6 API
+- [x] M4 Mid-run gate
+- [x] M5 Resume (T-050 gate resolution, T-051 restore prompt, T-052 fire resume/terminate)
+- [x] M6 API
 - [ ] M7 UI
 - [ ] M8 E2E
 - [ ] M9 Docs
@@ -431,16 +431,16 @@
 
 ### Steps
 
-- [ ] Add `ResolveGate(ctx, gateID, decision, note)`.
-- [ ] Validate decision is allowed by gate context.
-- [ ] Store decision and note.
-- [ ] Emit `gate.resolved`.
+- [x] Add `ResolveGate(ctx, gateID, decision, note)`.
+- [x] Validate decision is allowed by gate context.
+- [x] Store decision and note.
+- [x] Emit `gate.resolved`.
 
 ### Acceptance checklist
 
-- [ ] Invalid gate id returns 404-equivalent app error.
-- [ ] Invalid decision returns validation error.
-- [ ] Valid decision closes gate.
+- [x] Invalid gate id returns 404-equivalent app error.
+- [x] Invalid decision returns validation error.
+- [x] Valid decision closes gate.
 
 ## T-051 — Define restore prompt/seed format
 
@@ -450,20 +450,20 @@
 
 ### Steps
 
-- [ ] Build restore seed containing:
-  - [ ] original task YAML or task id.
-  - [ ] gate context path.
-  - [ ] gate summary.
-  - [ ] decision.
-  - [ ] human note.
-  - [ ] resume instruction.
-- [ ] Ensure `route` and `reject` include note text.
-- [ ] Keep seed deterministic and testable.
+- [x] Build restore seed containing:
+  - [x] original task YAML or task id.
+  - [x] gate context path.
+  - [x] gate summary.
+  - [x] decision.
+  - [x] human note.
+  - [x] resume instruction.
+- [x] Ensure `route` and `reject` include note text.
+- [x] Keep seed deterministic and testable.
 
 ### Acceptance checklist
 
-- [ ] Snapshot/unit test verifies seed content.
-- [ ] Seed instructs agent not to repeat completed ledger work.
+- [x] Snapshot/unit test verifies seed content.
+- [x] Seed instructs agent not to repeat completed ledger work.
 
 ## T-052 — Resume or terminate fire based on decision
 
@@ -473,19 +473,19 @@
 
 ### Steps
 
-- [ ] `approve`: mark fire running and enqueue/retry fresh attempt.
-- [ ] `route`: mark fire running and enqueue/retry fresh attempt with note.
-- [ ] `defer`: mark fire deferred; do not enqueue.
-- [ ] `reject`: mark fire rejected; do not enqueue.
-- [ ] Emit `fire.running`, `fire.deferred`, or `fire.rejected` events.
+- [x] `approve`: mark fire running and enqueue/retry fresh attempt.
+- [x] `route`: mark fire running and enqueue/retry fresh attempt with note.
+- [x] `defer`: mark fire deferred; do not enqueue.
+- [x] `reject`: mark fire rejected; do not enqueue.
+- [x] Emit `fire.running`, `fire.deferred`, or `fire.rejected` events.
 
 ### Acceptance checklist
 
-- [ ] Approve resumes.
-- [ ] Route resumes with note in retry prompt.
-- [ ] Defer does not resume.
-- [ ] Reject does not resume.
-- [ ] Events are emitted.
+- [x] Approve resumes.
+- [x] Route resumes with note in retry prompt.
+- [x] Defer does not resume.
+- [x] Reject does not resume.
+- [x] Events are emitted.
 
 ---
 
@@ -499,18 +499,18 @@
 
 ### Steps
 
-- [ ] Define `LoopView`.
-- [ ] Define `FireView`.
-- [ ] Define `GateSummary`.
-- [ ] Define `GateDetail`.
-- [ ] Define `GateDecisionInput`.
-- [ ] Define event payloads for `fire.*` and `gate.*`.
+- [x] Define `LoopView`.
+- [x] Define `FireView`.
+- [x] Define `GateSummary`.
+- [x] Define `GateDetail`.
+- [x] Define `GateDecisionInput`.
+- [x] Define event payloads for `fire.*` and `gate.*`.
 
 ### Acceptance checklist
 
-- [ ] DTOs include only stable frontend fields.
-- [ ] No raw DB/internal structs are exposed directly.
-- [ ] Example JSON payloads can be added to docs/tests.
+- [x] DTOs include only stable frontend fields.
+- [x] No raw DB/internal structs are exposed directly.
+- [x] Example JSON payloads can be added to docs/tests.
 
 ## T-061 — Implement loop endpoints
 
@@ -520,15 +520,15 @@
 
 ### Steps
 
-- [ ] `GET /v1/loops`.
-- [ ] `GET /v1/loops/{id}/fires`.
-- [ ] App service combines definitions snapshot + runtime latest fire.
-- [ ] Return useful 404 if loop id unknown.
+- [x] `GET /v1/loops`.
+- [x] `GET /v1/loops/{id}/fires`.
+- [x] App service combines definitions snapshot + runtime latest fire.
+- [x] Return useful 404 if loop id unknown.
 
 ### Acceptance checklist
 
-- [ ] API tests cover success and unknown loop.
-- [ ] Response includes latest fire status where available.
+- [x] API tests cover success and unknown loop.
+- [x] Response includes latest fire status where available.
 
 ## T-062 — Implement gate endpoints
 
@@ -538,16 +538,16 @@
 
 ### Steps
 
-- [ ] `GET /v1/gates`.
-- [ ] `GET /v1/gates/{id}`.
-- [ ] `POST /v1/gates/{id}/decision`.
-- [ ] Return validation errors as structured JSON.
+- [x] `GET /v1/gates`.
+- [x] `GET /v1/gates/{id}`.
+- [x] `POST /v1/gates/{id}/decision`.
+- [x] Return validation errors as structured JSON.
 
 ### Acceptance checklist
 
-- [ ] API tests cover list/detail/decision.
-- [ ] Detail includes parsed front-matter + Markdown body.
-- [ ] Decision endpoint resolves and resumes/terminates as expected.
+- [x] API tests cover list/detail/decision.
+- [x] Detail includes parsed front-matter + Markdown body.
+- [x] Decision endpoint resolves and resumes/terminates as expected.
 
 ## T-063 — Extend SSE events
 
@@ -557,15 +557,15 @@
 
 ### Steps
 
-- [ ] Preserve existing `/v1/events` behavior.
-- [ ] Add event payloads for fire/gate transitions.
-- [ ] Confirm `Last-Event-ID` resume still works.
+- [x] Preserve existing `/v1/events` behavior.
+- [x] Add event payloads for fire/gate transitions.
+- [x] Confirm `Last-Event-ID` resume still works.
 
 ### Acceptance checklist
 
-- [ ] Existing event tests still pass.
-- [ ] New event types are returned after relevant store actions.
-- [ ] Resume after event id returns only newer events.
+- [x] Existing event tests still pass.
+- [x] New event types are returned after relevant store actions.
+- [x] Resume after event id returns only newer events.
 
 ---
 
@@ -896,7 +896,7 @@
 3. PR 3 — Loop scheduler wiring (`T-031`, `T-032`, `T-070`, `T-071`, partial `T-072`).
 4. PR 4 — Gate artifact + exit 42 (`T-040` to `T-042`).
 5. PR 5 — Gate decisions + restore (`T-050` to `T-052`).
-6. PR 6 — HTTP API + SSE DTOs (`T-060` to `T-063`).
+6. PR 6 — HTTP API + SSE DTOs (`T-060` to `T-063`). → **PR #9 merged**
 7. PR 7 — React board + embedded static (`T-080` to `T-085`).
 8. PR 8 — E2E fixture + docs (`T-090` to `T-103`).
 
@@ -904,17 +904,17 @@
 
 # Phase-1 final acceptance checklist
 
-- [ ] `go test ./...` passes.
+- [x] `go test ./...` passes.
 - [ ] Frontend build passes.
-- [ ] One configured definition root loads pattern + loop YAML.
+- [x] One configured definition root loads pattern + loop YAML.
 - [ ] Invalid definition changes do not poison active snapshot.
-- [ ] Cron creates a Fire and linked Goal.
-- [ ] A fake/real task can write `gate.context.md` and exit 42.
-- [ ] Exit 42 creates an open Gate, marks Fire gated, emits SSE event, and frees worker.
-- [ ] `GET /v1/loops` returns loops + latest fire status.
-- [ ] `GET /v1/gates` returns open gates.
-- [ ] `GET /v1/gates/{id}` returns parsed front-matter + Markdown body.
-- [ ] `POST /v1/gates/{id}/decision` records the decision and resumes or terminates correctly.
+- [x] Cron creates a Fire and linked Goal.
+- [x] A fake/real task can write `gate.context.md` and exit 42.
+- [x] Exit 42 creates an open Gate, marks Fire gated, emits SSE event, and frees worker.
+- [x] `GET /v1/loops` returns loops + latest fire status.
+- [x] `GET /v1/gates` returns open gates.
+- [x] `GET /v1/gates/{id}` returns parsed front-matter + Markdown body.
+- [x] `POST /v1/gates/{id}/decision` records the decision and resumes or terminates correctly.
 - [ ] React board renders Scheduled/Running/Human Gate/Done.
 - [ ] Pending-gates badge updates from SSE.
 - [ ] Gate modal renders the thread ledger and can submit a decision.

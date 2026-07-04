@@ -19,7 +19,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const latestSchemaVersion = 3
+const latestSchemaVersion = 4
 
 type Options struct {
 	Paths       home.Paths

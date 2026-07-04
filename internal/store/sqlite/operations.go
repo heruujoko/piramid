@@ -62,7 +62,7 @@ func (s *Store) CancelTask(ctx context.Context, taskID string, now time.Time) er
 		return err
 	}
 	switch domain.TaskStatus(status) {
-	case domain.TaskPending, domain.TaskRunning, domain.TaskVerifying, domain.TaskRetryWait:
+	case domain.TaskPending, domain.TaskRunning, domain.TaskVerifying, domain.TaskRetryWait, domain.TaskGated:
 	default:
 		return fmt.Errorf("%w: task %s is %s", storepkg.ErrInvalidState, taskID, status)
 	}
@@ -85,6 +85,39 @@ func (s *Store) CancelTask(ctx context.Context, taskID string, now time.Time) er
 		  AND holder_id IN (SELECT CAST(id AS TEXT) FROM attempts WHERE task_id = ?)
 	`, taskID); err != nil {
 		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM gates WHERE task_id = ? AND status = ?`, taskID, domain.GateOpen)
+	if err != nil {
+		return err
+	}
+	var gateIDs []string
+	for rows.Next() {
+		var gateID string
+		if err := rows.Scan(&gateID); err != nil {
+			rows.Close()
+			return err
+		}
+		gateIDs = append(gateIDs, gateID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, gateID := range gateIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE gates
+			SET status = ?, decision = ?, decision_note = ?, resolved_at = ?, updated_at = ?
+			WHERE id = ? AND task_id = ? AND status = ?
+		`, domain.GateRejected, domain.GateDecisionReject, "task cancelled", formatTime(now), formatTime(now),
+			gateID, taskID, domain.GateOpen); err != nil {
+			return err
+		}
+		if err := appendEvent(ctx, tx, "gate", gateID, "GATE_RESOLVED",
+			map[string]any{"decision": domain.GateDecisionReject, "note": "task cancelled", "status": domain.GateRejected}, now); err != nil {
+			return err
+		}
 	}
 	if err := appendEvent(ctx, tx, "task", taskID, "OPERATOR_CANCEL", nil, now); err != nil {
 		return err
@@ -139,6 +172,116 @@ func (s *Store) ListEvents(
 		events = append(events, event)
 	}
 	return events, rows.Err()
+}
+
+func (s *Store) ResumeGatedTask(ctx context.Context, in storepkg.ResumeGatedTaskInput) error {
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status string
+	var attempts, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status, attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, in.TaskID).Scan(&status, &attempts, &maxAttempts); err != nil {
+		return err
+	}
+	if status != string(domain.TaskGated) {
+		return fmt.Errorf("%w: task %s is %s", storepkg.ErrInvalidState, in.TaskID, status)
+	}
+	if attempts >= maxAttempts && !in.Override {
+		return fmt.Errorf("%w: task %s exhausted attempts", storepkg.ErrInvalidState, in.TaskID)
+	}
+	if attempts >= maxAttempts {
+		maxAttempts = attempts + 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks
+		SET status = ?, max_attempts = ?, resume_prompt = ?, next_run_at = ?, updated_at = ?
+		WHERE id = ?
+	`, domain.TaskPending, maxAttempts, in.RestorePrompt, formatTime(now), formatTime(now), in.TaskID); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", in.TaskID, "GATE_RESUME",
+		map[string]any{"override": in.Override}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GateAttempt(ctx context.Context, in storepkg.GateAttemptInput) error {
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM tasks WHERE id = ?", in.TaskID).Scan(&status); err != nil {
+		return err
+	}
+	if status != string(domain.TaskRunning) {
+		return fmt.Errorf("%w: task %s is %s", storepkg.ErrInvalidState, in.TaskID, status)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE attempts SET status = ?, finished_at = ? WHERE id = ? AND task_id = ?
+	`, domain.AttemptGated, formatTime(now), in.AttemptID, in.TaskID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?
+	`, domain.TaskGated, formatTime(now), in.TaskID, domain.TaskRunning); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM workspace_leases WHERE holder_type = 'attempt' AND holder_id = ?
+	`, fmt.Sprint(in.AttemptID)); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", in.TaskID, "TASK_GATED",
+		map[string]any{"attempt_id": in.AttemptID}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) SetTaskStatus(ctx context.Context, taskID string, status domain.TaskStatus, now time.Time) error {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var current string
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM tasks WHERE id = ?", taskID).Scan(&current); err != nil {
+		return err
+	}
+	if !domain.CanTransition(domain.TaskStatus(current), status) {
+		return fmt.Errorf("%w: task %s cannot transition from %s to %s", storepkg.ErrInvalidState, taskID, current, status)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, resume_prompt = '', next_run_at = NULL, updated_at = ? WHERE id = ?
+	`, status, formatTime(now), taskID); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", taskID, "TASK_STATUS_CHANGED",
+		map[string]any{"status": status}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 var _ = sql.ErrNoRows

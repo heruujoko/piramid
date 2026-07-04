@@ -15,7 +15,7 @@ import (
 func (s *Store) GetTask(ctx context.Context, id string) (domain.TaskView, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT task_json, status, attempt_count,
-		       COALESCE((
+		       COALESCE(NULLIF(tasks.resume_prompt, ''), (
 		           SELECT v.retry_prompt
 		           FROM verifications v
 		           JOIN attempts a ON a.id = v.attempt_id
@@ -166,7 +166,7 @@ func (s *Store) ListRunnable(ctx context.Context, now time.Time, limit int) ([]d
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT task_json, status, attempt_count,
-		       COALESCE((
+		       COALESCE(NULLIF(t.resume_prompt, ''), (
 		           SELECT v.retry_prompt
 		           FROM verifications v
 		           JOIN attempts a ON a.id = v.attempt_id

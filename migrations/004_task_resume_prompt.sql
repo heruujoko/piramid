@@ -1,0 +1,1 @@
+ALTER TABLE tasks ADD COLUMN resume_prompt TEXT NOT NULL DEFAULT '';
