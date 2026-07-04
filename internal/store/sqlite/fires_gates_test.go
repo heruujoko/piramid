@@ -57,6 +57,22 @@ func TestMigration003UpgradesExistingDatabaseAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigration004AddsTaskResumePrompt(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	var columnName string
+	err := st.db.QueryRowContext(ctx, `
+		SELECT name FROM pragma_table_info('tasks') WHERE name = 'resume_prompt'
+	`).Scan(&columnName)
+	if err != nil {
+		t.Fatalf("tasks.resume_prompt missing: %v", err)
+	}
+	if columnName != "resume_prompt" {
+		t.Fatalf("column = %q, want resume_prompt", columnName)
+	}
+}
+
 func testFire(id, loopID string, scheduledAt time.Time) domain.Fire {
 	return domain.Fire{
 		ID:          id,

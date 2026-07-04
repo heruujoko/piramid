@@ -81,7 +81,7 @@ func (s *Store) StartAttempt(
 		return domain.Attempt{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE tasks SET status = ?, attempt_count = ?, next_run_at = NULL, updated_at = ?
+		UPDATE tasks SET status = ?, attempt_count = ?, next_run_at = NULL, resume_prompt = '', updated_at = ?
 		WHERE id = ?
 	`, domain.TaskRunning, attemptNumber, formatTime(startedAt), input.TaskID); err != nil {
 		return domain.Attempt{}, err
