@@ -149,9 +149,13 @@ func Start(ctx context.Context, options Options) (*Running, error) {
 		definitionsRoot = options.DefinitionsRoot
 	}
 	if definitionsRoot != "" {
-		application.Definitions = &definitionsSource{root: definitionsRoot}
+		cachedSource, err := definitions.NewCachedSource(definitionsRoot)
+		if err != nil {
+			return nil, fmt.Errorf("definitions: %w", err)
+		}
+		application.Definitions = cachedSource
 		loopScheduler := looprunner.NewScheduler(looprunner.Config{
-			Source:  &definitionsSource{root: definitionsRoot},
+			Source:  cachedSource,
 			Store:   st,
 			Records: recordStore,
 			OnError: func(err error) {
@@ -196,21 +200,6 @@ func roleRuntime(runtime config.RuntimeConfig) engine.RoleRuntime {
 		Command: runtime.Command, Args: runtime.Args,
 		Environment: os.Environ(), Timeout: time.Duration(runtime.Timeout),
 	}
-}
-
-type definitionsSource struct {
-	root string
-}
-
-func (s *definitionsSource) Load(ctx context.Context) (definitions.Snapshot, error) {
-	// definitions.LoadRoot performs synchronous filesystem reads (os.Stat,
-	// os.ReadDir) and does not accept a context. Honor cancellation at the
-	// boundary so a shutdown between scheduler ticks short-circuits the load
-	// instead of starting fresh disk I/O.
-	if err := ctx.Err(); err != nil {
-		return definitions.Snapshot{}, err
-	}
-	return definitions.LoadRoot(s.root)
 }
 
 type stdLogger struct{}
