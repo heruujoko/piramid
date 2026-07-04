@@ -141,4 +141,74 @@ func (s *Store) ListEvents(
 	return events, rows.Err()
 }
 
+func (s *Store) ResumeGatedTask(ctx context.Context, in storepkg.ResumeGatedTaskInput) error {
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status string
+	var attempts, maxAttempts int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status, attempt_count, max_attempts FROM tasks WHERE id = ?
+	`, in.TaskID).Scan(&status, &attempts, &maxAttempts); err != nil {
+		return err
+	}
+	if status != string(domain.TaskGated) {
+		return fmt.Errorf("%w: task %s is %s", storepkg.ErrInvalidState, in.TaskID, status)
+	}
+	if attempts >= maxAttempts && !in.Override {
+		return fmt.Errorf("%w: task %s exhausted attempts", storepkg.ErrInvalidState, in.TaskID)
+	}
+	if attempts >= maxAttempts {
+		maxAttempts = attempts + 1
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks
+		SET status = ?, max_attempts = ?, resume_prompt = ?, next_run_at = ?, updated_at = ?
+		WHERE id = ?
+	`, domain.TaskPending, maxAttempts, in.RestorePrompt, formatTime(now), formatTime(now), in.TaskID); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", in.TaskID, "GATE_RESUME",
+		map[string]any{"override": in.Override}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) SetTaskStatus(ctx context.Context, taskID string, status domain.TaskStatus, now time.Time) error {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var current string
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM tasks WHERE id = ?", taskID).Scan(&current); err != nil {
+		return err
+	}
+	if !domain.CanTransition(domain.TaskStatus(current), status) {
+		return fmt.Errorf("%w: task %s cannot transition from %s to %s", storepkg.ErrInvalidState, taskID, current, status)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET status = ?, resume_prompt = '', next_run_at = NULL, updated_at = ? WHERE id = ?
+	`, status, formatTime(now), taskID); err != nil {
+		return err
+	}
+	if err := appendEvent(ctx, tx, "task", taskID, "TASK_STATUS_CHANGED",
+		map[string]any{"status": status}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 var _ = sql.ErrNoRows

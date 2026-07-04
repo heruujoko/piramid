@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -440,5 +441,85 @@ func TestGetTaskReturnsNotFound(t *testing.T) {
 	_, err := st.GetTask(context.Background(), "missing")
 	if err == nil || err != sql.ErrNoRows {
 		t.Fatalf("GetTask() error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func admitSingleTaskForGateTest(t *testing.T, st *Store, status domain.TaskStatus) string {
+	t.Helper()
+	ctx := context.Background()
+	goal := domain.Goal{ID: "GOAL-GATE", Text: "gate goal", ProjectPath: t.TempDir(), Status: domain.GoalConfirmed, CreatedAt: time.Now().UTC()}
+	plan := domain.Plan{Version: 1, GoalID: goal.ID, Tasks: []domain.Task{{
+		ID: "TASK-GATE", Title: "gate task", Goal: "do gated work", ProjectPath: goal.ProjectPath,
+		DOD: []string{"done"}, Model: "test", MaxAttempts: 1, Timeout: time.Minute, TimeoutText: "1m",
+	}}}
+	if err := st.AdmitPlan(ctx, goal, plan, storepkg.PersistedPaths{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := st.db.ExecContext(ctx, `UPDATE tasks SET status = ?, attempt_count = 1, max_attempts = 1 WHERE id = ?`, status, "TASK-GATE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "TASK-GATE"
+}
+
+func TestResumeGatedTaskSetsPendingAndStoresResumePrompt(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	taskID := admitSingleTaskForGateTest(t, st, domain.TaskGated)
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+
+	err := st.ResumeGatedTask(ctx, storepkg.ResumeGatedTaskInput{
+		TaskID: taskID, RestorePrompt: "resume from gate", Override: true, Now: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view, err := st.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Status != domain.TaskPending {
+		t.Fatalf("status = %s, want PENDING", view.Status)
+	}
+	if view.RetryPrompt != "resume from gate" {
+		t.Fatalf("retry prompt = %q, want restore prompt", view.RetryPrompt)
+	}
+	var maxAttempts int
+	if err := st.db.QueryRowContext(ctx, "SELECT max_attempts FROM tasks WHERE id = ?", taskID).Scan(&maxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if maxAttempts != 2 {
+		t.Fatalf("max attempts = %d, want 2 override bump", maxAttempts)
+	}
+}
+
+func TestResumeGatedTaskRejectsNonGatedTask(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	taskID := admitSingleTaskForGateTest(t, st, domain.TaskFailed)
+
+	err := st.ResumeGatedTask(ctx, storepkg.ResumeGatedTaskInput{
+		TaskID: taskID, RestorePrompt: "resume", Override: true, Now: time.Now().UTC(),
+	})
+	if err == nil || !errors.Is(err, storepkg.ErrInvalidState) {
+		t.Fatalf("error = %v, want ErrInvalidState", err)
+	}
+}
+
+func TestSetTaskStatusFromGated(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	taskID := admitSingleTaskForGateTest(t, st, domain.TaskGated)
+
+	if err := st.SetTaskStatus(ctx, taskID, domain.TaskBlocked, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	view, err := st.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Status != domain.TaskBlocked {
+		t.Fatalf("status = %s, want BLOCKED", view.Status)
 	}
 }
