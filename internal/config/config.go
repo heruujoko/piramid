@@ -68,7 +68,8 @@ type RuntimeConfig struct {
 }
 
 type LoopsConfig struct {
-	DefinitionRoot string `yaml:"definition_root"`
+	DefinitionRoot      string `yaml:"definition_root"`
+	GitHubWebhookSecret string `yaml:"github_webhook_secret"`
 }
 
 type RetryConfig struct {

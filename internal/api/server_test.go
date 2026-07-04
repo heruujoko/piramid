@@ -109,6 +109,14 @@ func (f *fakeApplication) ListEvents(_ context.Context, after int64, _ int) ([]s
 	f.eventCalls++
 	return f.events, nil
 }
+func (f *fakeApplication) ListLoops(context.Context) ([]domain.LoopView, error) { return nil, nil }
+func (f *fakeApplication) ListLoopFires(context.Context, string) ([]domain.FireView, error) { return nil, nil }
+func (f *fakeApplication) ListOpenGates(context.Context) ([]domain.GateSummary, error) { return nil, nil }
+func (f *fakeApplication) GetGate(context.Context, string) (domain.GateDetail, error) {
+	return domain.GateDetail{}, app.ErrNotFound
+}
+func (f *fakeApplication) ResolveGate(context.Context, string, domain.GateDecisionInput) error { return nil }
+func (f *fakeApplication) HandleGitHubWebhook(context.Context, string, string, []byte) error { return nil }
 
 func TestServerExposesHealthAndTaskEndpoints(t *testing.T) {
 	application := &fakeApplication{
