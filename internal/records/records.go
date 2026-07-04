@@ -41,6 +41,7 @@ type AttemptPaths struct {
 	VerifierStderr string
 	Verification   string
 	Artifacts      string
+	GateContext    string
 }
 
 type Store struct {
@@ -143,6 +144,7 @@ func (s *Store) CreateAttempt(taskID string, number int) (AttemptPaths, error) {
 		VerifierStderr: filepath.Join(root, "verifier-stderr.log"),
 		Verification:   filepath.Join(root, "verification.yaml"),
 		Artifacts:      artifactRoot,
+		GateContext:    filepath.Join(root, "gate.context.md"),
 	}, nil
 }
 

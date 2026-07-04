@@ -138,6 +138,10 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 
 	executorRuntime := r.executorRuntime
 	executorRuntime.Timeout = task.Timeout
+	executorRuntime.Environment = append(
+		append([]string(nil), executorRuntime.Environment...),
+		"PIRAMID_GATE_CONTEXT="+paths.GateContext,
+	)
 	executorResult, err := r.invoke(
 		ctx, r.executor, executorRuntime, task, attempt,
 		executorPrompt, paths.ExecutorPrompt, paths.Stdout, paths.Stderr,
