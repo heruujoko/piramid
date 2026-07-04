@@ -184,6 +184,21 @@ func TestRunnerPassesGateContextPathToExecutor(t *testing.T) {
 	if !strings.Contains(gateEnv, filepath.Join("TASK-1", "0001")) {
 		t.Fatalf("gate context path = %q, want per-attempt path", gateEnv)
 	}
+	// With an empty configured executor env, the runner must seed from the
+	// process environment so credentials/HOME/PATH survive alongside the gate var.
+	env := fixture.executor.invocations[0].Environment
+	if len(env) <= 1 {
+		t.Fatalf("executor env = %v, want inherited process env plus gate var", env)
+	}
+	inherited := false
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "HOME=") {
+			inherited = true
+		}
+	}
+	if !inherited {
+		t.Fatal("executor env dropped inherited process environment (no PATH/HOME)")
+	}
 	// Verifier invocation must not carry the gate context env var.
 	for _, entry := range fixture.verifier.invocations[0].Environment {
 		if strings.HasPrefix(entry, "PIRAMID_GATE_CONTEXT=") {
