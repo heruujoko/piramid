@@ -62,7 +62,7 @@ func (s *Store) CancelTask(ctx context.Context, taskID string, now time.Time) er
 		return err
 	}
 	switch domain.TaskStatus(status) {
-	case domain.TaskPending, domain.TaskRunning, domain.TaskVerifying, domain.TaskRetryWait:
+	case domain.TaskPending, domain.TaskRunning, domain.TaskVerifying, domain.TaskRetryWait, domain.TaskGated:
 	default:
 		return fmt.Errorf("%w: task %s is %s", storepkg.ErrInvalidState, taskID, status)
 	}
@@ -85,6 +85,39 @@ func (s *Store) CancelTask(ctx context.Context, taskID string, now time.Time) er
 		  AND holder_id IN (SELECT CAST(id AS TEXT) FROM attempts WHERE task_id = ?)
 	`, taskID); err != nil {
 		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM gates WHERE task_id = ? AND status = ?`, taskID, domain.GateOpen)
+	if err != nil {
+		return err
+	}
+	var gateIDs []string
+	for rows.Next() {
+		var gateID string
+		if err := rows.Scan(&gateID); err != nil {
+			rows.Close()
+			return err
+		}
+		gateIDs = append(gateIDs, gateID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, gateID := range gateIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE gates
+			SET status = ?, decision = ?, decision_note = ?, resolved_at = ?, updated_at = ?
+			WHERE id = ? AND task_id = ? AND status = ?
+		`, domain.GateRejected, domain.GateDecisionReject, "task cancelled", formatTime(now), formatTime(now),
+			gateID, taskID, domain.GateOpen); err != nil {
+			return err
+		}
+		if err := appendEvent(ctx, tx, "gate", gateID, "GATE_RESOLVED",
+			map[string]any{"decision": domain.GateDecisionReject, "note": "task cancelled", "status": domain.GateRejected}, now); err != nil {
+			return err
+		}
 	}
 	if err := appendEvent(ctx, tx, "task", taskID, "OPERATOR_CANCEL", nil, now); err != nil {
 		return err

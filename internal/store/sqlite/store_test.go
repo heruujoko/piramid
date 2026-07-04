@@ -362,6 +362,61 @@ func TestOperationalFailureDoesNotOverwriteOperatorCancellation(t *testing.T) {
 	}
 }
 
+func TestCancelTaskCancelsGatedTaskAndClosesGate(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	taskID := admitSingleTaskForGateTest(t, st, domain.TaskGated)
+	now := time.Date(2026, 7, 4, 13, 0, 0, 0, time.UTC)
+
+	if _, err := st.CreateFire(ctx, domain.Fire{
+		ID: "FIRE-GATE", LoopID: "loop-gate", GoalID: "GOAL-GATE",
+		Status: domain.FireGated, ScheduledAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateGate(ctx, domain.Gate{
+		ID: "GATE-CANCEL", FireID: "FIRE-GATE", GoalID: "GOAL-GATE", TaskID: taskID,
+		Status: domain.GateOpen, ContextPath: "/state/gates/GATE-CANCEL/context.md",
+		Context: domain.GateContext{
+			Gate: "operator", Phase: "execution", LoopID: "loop-gate", FireID: "FIRE-GATE", GoalID: "GOAL-GATE", TaskID: taskID,
+			Summary: "decide", DecisionOptions: []domain.GateDecision{domain.GateDecisionApprove},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.CancelTask(ctx, taskID, now); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := st.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != domain.TaskCancelled {
+		t.Fatalf("task status = %s, want CANCELLED", task.Status)
+	}
+	gate, err := st.GetGate(ctx, "GATE-CANCEL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate.Status != domain.GateRejected {
+		t.Fatalf("gate status = %s, want GATE_REJECTED", gate.Status)
+	}
+	if gate.Decision != domain.GateDecisionReject || gate.DecisionNote != "task cancelled" {
+		t.Fatalf("gate decision = %s note = %q, want reject/task cancelled", gate.Decision, gate.DecisionNote)
+	}
+	open, err := st.ListOpenGates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gate := range open {
+		if gate.TaskID == taskID {
+			t.Fatalf("gate %s still open for cancelled task", gate.ID)
+		}
+	}
+}
+
 func TestReconcileBlockedMarksDescendantsOfTerminalFailure(t *testing.T) {
 	st := openTestStore(t)
 	goal, plan := testGoalPlan()
