@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/heruujoko/piramid/internal/definitions"
 	"github.com/heruujoko/piramid/internal/domain"
 	"github.com/heruujoko/piramid/internal/intake"
 	"github.com/heruujoko/piramid/internal/records"
+	"github.com/heruujoko/piramid/internal/restore"
 	storepkg "github.com/heruujoko/piramid/internal/store"
 	"github.com/heruujoko/piramid/internal/webhook"
 )
@@ -343,6 +345,32 @@ func (s *Service) GetGate(ctx context.Context, gateID string) (domain.GateDetail
 	return detail, nil
 }
 
+func decisionAllowed(gate domain.Gate, decision domain.GateDecision) bool {
+	for _, option := range gate.Context.DecisionOptions {
+		if option == decision {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) gateLogTail(ctx context.Context, gate domain.Gate) restore.LogTail {
+	attemptID, err := strconv.ParseInt(gate.AttemptID, 10, 64)
+	if err != nil || attemptID == 0 {
+		return restore.LogTail{StdoutTail: "(log unavailable)", StderrTail: "(log unavailable)"}
+	}
+	paths, err := s.Store.GetAttemptLogPaths(ctx, attemptID)
+	if err != nil {
+		return restore.LogTail{StdoutTail: "(log unavailable: " + err.Error() + ")", StderrTail: "(log unavailable: " + err.Error() + ")"}
+	}
+	return restore.LogTail{
+		StdoutPath: paths.Stdout,
+		StderrPath: paths.Stderr,
+		StdoutTail: restore.TailFile(paths.Stdout, 20),
+		StderrTail: restore.TailFile(paths.Stderr, 20),
+	}
+}
+
 func (s *Service) ResolveGate(ctx context.Context, gateID string, input domain.GateDecisionInput) error {
 	if input.Decision == "" {
 		return fmt.Errorf("%w: decision is required", ErrInvalid)
@@ -356,11 +384,67 @@ func (s *Service) ResolveGate(ctx context.Context, gateID string, input domain.G
 	default:
 		return fmt.Errorf("%w: invalid decision: %s", ErrInvalid, input.Decision)
 	}
+
+	gate, err := s.Store.GetGate(ctx, gateID)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if gate.Status != domain.GateOpen {
+		return fmt.Errorf("%w: gate %s is %s", ErrConflict, gateID, gate.Status)
+	}
+	if !decisionAllowed(gate, decision) {
+		return fmt.Errorf("%w: decision %s is not allowed for gate %s", ErrInvalid, decision, gateID)
+	}
+
+	note := input.Note
+	if note == "" {
+		note = restore.FallbackNote(decision)
+	}
+	now := s.now()
+
+	switch decision {
+	case domain.GateDecisionApprove, domain.GateDecisionRoute:
+		prompt := restore.BuildPrompt(restore.BuildInput{
+			Gate: gate, Decision: decision, Note: note, LogTail: s.gateLogTail(ctx, gate),
+		})
+		if gate.TaskID != "" {
+			if err := s.Store.ResumeGatedTask(ctx, storepkg.ResumeGatedTaskInput{
+				TaskID: gate.TaskID, RestorePrompt: prompt, Override: true, Now: now,
+			}); err != nil {
+				return mapStoreError(err)
+			}
+		}
+		if gate.FireID != "" {
+			if err := s.Store.UpdateFireStatus(ctx, gate.FireID, domain.FireRunning, now); err != nil {
+				return mapStoreError(err)
+			}
+		}
+	case domain.GateDecisionDefer:
+		if gate.TaskID != "" {
+			if err := s.Store.SetTaskStatus(ctx, gate.TaskID, domain.TaskBlocked, now); err != nil {
+				return mapStoreError(err)
+			}
+		}
+		if gate.FireID != "" {
+			if err := s.Store.UpdateFireStatus(ctx, gate.FireID, domain.FireDeferred, now); err != nil {
+				return mapStoreError(err)
+			}
+		}
+	case domain.GateDecisionReject:
+		if gate.TaskID != "" {
+			if err := s.Store.SetTaskStatus(ctx, gate.TaskID, domain.TaskCancelled, now); err != nil {
+				return mapStoreError(err)
+			}
+		}
+		if gate.FireID != "" {
+			if err := s.Store.UpdateFireStatus(ctx, gate.FireID, domain.FireRejected, now); err != nil {
+				return mapStoreError(err)
+			}
+		}
+	}
+
 	return mapStoreError(s.Store.ResolveGate(ctx, storepkg.ResolveGateInput{
-		ID:       gateID,
-		Decision: decision,
-		Note:     input.Note,
-		Now:      s.now(),
+		ID: gateID, Decision: decision, Note: note, Now: now,
 	}))
 }
 
