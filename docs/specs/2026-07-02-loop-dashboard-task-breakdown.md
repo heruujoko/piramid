@@ -38,7 +38,7 @@
 - [x] M4 Mid-run gate
 - [x] M5 Resume (T-050 gate resolution, T-051 restore prompt, T-052 fire resume/terminate)
 - [x] M6 API
-- [ ] M7 UI
+- [x] M7 Config
 - [ ] M8 E2E
 - [ ] M9 Docs
 
