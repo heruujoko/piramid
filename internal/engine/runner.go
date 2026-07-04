@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -120,11 +121,22 @@ func NewRunner(config RunnerConfig) *Runner {
 	}
 }
 
-// defaultGateIDGenerator mirrors the looprunner ID convention but without a
-// loop ID (the runner does not carry one); collisions within the same second
-// are acceptable for this layer and tests inject a deterministic Now.
+// defaultGateIDGenerator produces a gate ID that is unique even when two
+// executor attempts open a gate in the same wall-clock second. It keeps the
+// sortable, human-readable GATE-YYYYMMDDHHMMSS prefix (mirroring the looprunner
+// ID convention without a loop ID, since the runner does not carry one) and
+// appends a short crypto-random suffix so concurrent attempts never collide on
+// the gates.id primary key, which previously caused CreateGate to fail and the
+// runner to record a spurious gate_create operational failure.
 func defaultGateIDGenerator(now time.Time) string {
-	return "GATE-" + now.Format("20060102150405")
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		// rand.Read failing is exceptional; fall back to nanoseconds so the
+		// ID still differs across near-simultaneous calls instead of
+		// degrading to second-precision collisions.
+		return fmt.Sprintf("GATE-%s-%09d", now.Format("20060102150405"), now.Nanosecond())
+	}
+	return fmt.Sprintf("GATE-%s-%x", now.Format("20060102150405"), suffix[:])
 }
 
 func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {

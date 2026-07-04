@@ -428,6 +428,30 @@ func TestRunnerExit42CreatesOpenGateAndSkipsVerifier(t *testing.T) {
 	}
 }
 
+// TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond verifies that the default
+// gate ID generator never collides when two attempts open a gate in the same
+// wall-clock second, which previously caused CreateGate to fail on the
+// gates.id primary key.
+func TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond(t *testing.T) {
+	now := time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC)
+	seen := make(map[string]struct{}, 256)
+	const iterations = 256
+	for i := 0; i < iterations; i++ {
+		id := defaultGateIDGenerator(now)
+		if !strings.HasPrefix(id, "GATE-20260704120000-") {
+			t.Fatalf("id %q missing sortable timestamp prefix", id)
+		}
+		if _, dup := seen[id]; dup {
+			t.Fatalf("defaultGateIDGenerator produced a duplicate id %q at iteration %d "+
+				"(same-second collision that breaks gates.id primary key)", id, i)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != iterations {
+		t.Fatalf("unique ids = %d, want %d", len(seen), iterations)
+	}
+}
+
 func TestRunnerExit42MissingGateContextRecordsFailure(t *testing.T) {
 	fixture := newRunnerFixture(t, 3)
 	fixture.executor.result.ExitCode = GateExitCode
