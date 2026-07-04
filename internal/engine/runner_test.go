@@ -437,6 +437,14 @@ func TestRunnerExit42CreatesOpenGateAndSkipsVerifier(t *testing.T) {
 	if len(fires) != 1 || fires[0].Status != domain.FireGated {
 		t.Fatalf("fire status = %v, want FIRE_GATED", fires)
 	}
+	// Task must be parked as gated so the resume flow can pick it up.
+	task, err := fixture.store.GetTask(context.Background(), "TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != domain.TaskGated {
+		t.Fatalf("task status = %s, want GATED", task.Status)
+	}
 }
 
 // TestRunnerDefaultGateIDGeneratorIsUniqueWithinSecond verifies that the default
