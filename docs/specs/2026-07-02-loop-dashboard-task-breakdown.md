@@ -360,19 +360,19 @@
 
 ### Steps
 
-- [ ] Split front-matter bounded by `---`.
-- [ ] Decode YAML front-matter into `domain.GateContext`.
-- [ ] Preserve Markdown body as string.
-- [ ] Validate required fields.
-- [ ] Validate `decision_options` contains only valid decisions.
+- [x] Split front-matter bounded by `---`.
+- [x] Decode YAML front-matter into `domain.GateContext`.
+- [x] Preserve Markdown body as string.
+- [x] Validate required fields.
+- [x] Validate `decision_options` contains only valid decisions.
 
 ### Acceptance checklist
 
-- [ ] Valid context parses.
-- [ ] Missing front-matter fails.
-- [ ] Missing required field fails.
-- [ ] Invalid decision option fails.
-- [ ] Markdown body is preserved exactly.
+- [x] Valid context parses.
+- [x] Missing front-matter fails.
+- [x] Missing required field fails.
+- [x] Invalid decision option fails.
+- [x] Markdown body is preserved exactly. (PR #6, merged)
 
 ## T-041 — Allocate gate context path per attempt
 
@@ -382,16 +382,16 @@
 
 ### Steps
 
-- [ ] Extend attempt paths with `GateContext` path.
-- [ ] Ensure parent directory exists.
-- [ ] Pass `PIRAMID_GATE_CONTEXT=<path>` into executor environment.
-- [ ] Include path in process/attempt records if useful for inspection.
+- [x] Extend attempt paths with `GateContext` path.
+- [x] Ensure parent directory exists. (`CreateAttempt` calls `MkdirAll(root)`)
+- [x] Pass `PIRAMID_GATE_CONTEXT=<path>` into executor environment.
+- [x] Include path in process/attempt records if useful for inspection. (exposed via `AttemptPaths.GateContext`)
 
 ### Acceptance checklist
 
-- [ ] Runner test can observe env var passed to fake runtime.
-- [ ] Path is unique per task attempt.
-- [ ] Directory exists before executor starts.
+- [x] Runner test can observe env var passed to fake runtime.
+- [x] Path is unique per task attempt. (`<attempts>/<taskID>/<NNNN>/gate.context.md`)
+- [x] Directory exists before executor starts.
 
 ## T-042 — Implement exit-42 handling in runner
 

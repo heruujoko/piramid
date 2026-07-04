@@ -60,6 +60,12 @@ func TestWritesGoalPlanTaskAndVerificationToExpectedPaths(t *testing.T) {
 	if attempt.Root != filepath.Join(paths.Attempts, "TASK-1", "0001") {
 		t.Fatalf("attempt root = %q", attempt.Root)
 	}
+	if attempt.GateContext != filepath.Join(attempt.Root, "gate.context.md") {
+		t.Fatalf("gate context path = %q", attempt.GateContext)
+	}
+	if info, err := os.Stat(attempt.Root); err != nil || !info.IsDir() {
+		t.Fatalf("attempt root dir not created: %v", err)
+	}
 	report, err := st.WriteVerification(attempt, domain.Verification{
 		Status:  domain.VerificationPass,
 		Reasons: []string{"done"},

@@ -138,6 +138,17 @@ func (r *Runner) Run(ctx context.Context, dispatch Dispatch) error {
 
 	executorRuntime := r.executorRuntime
 	executorRuntime.Timeout = task.Timeout
+	// Seed from the process environment when the configured executor env is empty,
+	// mirroring the command adapter's inherit-on-empty fallback. Appending the gate
+	// path would otherwise make the slice non-empty and drop HOME/PATH/credentials.
+	baseEnv := executorRuntime.Environment
+	if len(baseEnv) == 0 {
+		baseEnv = os.Environ()
+	}
+	executorRuntime.Environment = append(
+		append([]string(nil), baseEnv...),
+		"PIRAMID_GATE_CONTEXT="+paths.GateContext,
+	)
 	executorResult, err := r.invoke(
 		ctx, r.executor, executorRuntime, task, attempt,
 		executorPrompt, paths.ExecutorPrompt, paths.Stdout, paths.Stderr,

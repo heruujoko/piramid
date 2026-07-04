@@ -158,6 +158,55 @@ func TestRunnerCompletesOnlyAfterSeparateVerifierPasses(t *testing.T) {
 	}
 }
 
+func TestRunnerPassesGateContextPathToExecutor(t *testing.T) {
+	fixture := newRunnerFixture(t, 3)
+	fixture.executor.onRun = func(runtimepkg.Invocation) error {
+		return os.WriteFile(filepath.Join(fixture.project, "result.txt"), []byte("result"), 0o600)
+	}
+	if err := fixture.runner.Run(context.Background(), fixture.dispatch); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.executor.invocations) != 1 {
+		t.Fatalf("executor invocations = %d", len(fixture.executor.invocations))
+	}
+	var gateEnv string
+	for _, entry := range fixture.executor.invocations[0].Environment {
+		if strings.HasPrefix(entry, "PIRAMID_GATE_CONTEXT=") {
+			gateEnv = strings.TrimPrefix(entry, "PIRAMID_GATE_CONTEXT=")
+		}
+	}
+	if gateEnv == "" {
+		t.Fatal("PIRAMID_GATE_CONTEXT not passed to executor environment")
+	}
+	if filepath.Base(gateEnv) != "gate.context.md" {
+		t.Fatalf("gate context path = %q, want basename gate.context.md", gateEnv)
+	}
+	if !strings.Contains(gateEnv, filepath.Join("TASK-1", "0001")) {
+		t.Fatalf("gate context path = %q, want per-attempt path", gateEnv)
+	}
+	// With an empty configured executor env, the runner must seed from the
+	// process environment so credentials/HOME/PATH survive alongside the gate var.
+	env := fixture.executor.invocations[0].Environment
+	if len(env) <= 1 {
+		t.Fatalf("executor env = %v, want inherited process env plus gate var", env)
+	}
+	inherited := false
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "HOME=") {
+			inherited = true
+		}
+	}
+	if !inherited {
+		t.Fatal("executor env dropped inherited process environment (no PATH/HOME)")
+	}
+	// Verifier invocation must not carry the gate context env var.
+	for _, entry := range fixture.verifier.invocations[0].Environment {
+		if strings.HasPrefix(entry, "PIRAMID_GATE_CONTEXT=") {
+			t.Fatal("verifier environment should not include PIRAMID_GATE_CONTEXT")
+		}
+	}
+}
+
 func TestRunnerVerifiesNonZeroExecutorExit(t *testing.T) {
 	fixture := newRunnerFixture(t, 3)
 	fixture.executor.result.ExitCode = 2
