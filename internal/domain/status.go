@@ -11,6 +11,7 @@ const (
 	TaskFailed    TaskStatus = "FAILED"
 	TaskBlocked   TaskStatus = "BLOCKED"
 	TaskCancelled TaskStatus = "CANCELLED"
+	TaskGated     TaskStatus = "GATED"
 )
 
 var allowedTaskTransitions = map[TaskStatus]map[TaskStatus]struct{}{
@@ -22,6 +23,12 @@ var allowedTaskTransitions = map[TaskStatus]map[TaskStatus]struct{}{
 	TaskRunning: {
 		TaskVerifying: {},
 		TaskFailed:    {},
+		TaskCancelled: {},
+		TaskGated:     {},
+	},
+	TaskGated: {
+		TaskPending:   {},
+		TaskBlocked:   {},
 		TaskCancelled: {},
 	},
 	TaskVerifying: {
