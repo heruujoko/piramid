@@ -48,19 +48,18 @@ func NewCachedSource(root string) (*CachedSource, error) {
 // Context cancellation is honored: if ctx is done before a reload, the current
 // cached snapshot is returned.
 func (cs *CachedSource) Load(ctx context.Context) (Snapshot, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
 	if ctx.Err() != nil {
 		return cs.current, nil
 	}
 	stamp, err := cs.stamp()
 	if err != nil {
-		cs.mu.Lock()
 		cs.lastStamp = ""
-		cs.mu.Unlock()
 		log.Printf("definitions: stamp failed, will reload on next call: %v", err)
 		return cs.current, nil
 	}
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
 	if stamp == cs.lastStamp {
 		return cs.current, nil
 	}
@@ -83,7 +82,10 @@ func (cs *CachedSource) stamp() (string, error) {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(cs.root, path)
+		rel, relErr := filepath.Rel(cs.root, path)
+		if relErr != nil {
+			rel = path
+		}
 		parts = append(parts, rel+":"+info.ModTime().UTC().Format(time.RFC3339Nano))
 		return nil
 	})
