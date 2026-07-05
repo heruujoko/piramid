@@ -38,9 +38,9 @@
 - [x] M4 Mid-run gate
 - [x] M5 Resume (T-050 gate resolution, T-051 restore prompt, T-052 fire resume/terminate)
 - [x] M6 API
-- [ ] M7 UI
-- [ ] M8 E2E
-- [ ] M9 Docs
+- [x] M7 UI
+- [x] M8 E2E
+- [x] M9 Docs
 
 ---
 
@@ -639,16 +639,16 @@
 
 ### Steps
 
-- [ ] Create Vite React TypeScript app under `web/`.
-- [ ] Add scripts: `dev`, `build`, `test` if using tests.
-- [ ] Add basic CSS theme inspired by prototype.
-- [ ] Add API base URL config.
+- [x] Create Vite React TypeScript app under `web/`.
+- [x] Add scripts: `dev`, `build`, `test` if using tests.
+- [x] Add basic CSS theme inspired by prototype.
+- [x] Add API base URL config.
 
 ### Acceptance checklist
 
-- [ ] `npm install` / chosen package manager install works.
-- [ ] `npm run build` produces static output.
-- [ ] App shows placeholder board.
+- [x] `npm install` / chosen package manager install works.
+- [x] `npm run build` produces static output.
+- [x] App shows placeholder board.
 
 ## T-081 — Implement frontend API client and event store
 
@@ -658,15 +658,15 @@
 
 ### Steps
 
-- [ ] Implement REST client functions.
-- [ ] Implement `EventSource` subscription.
-- [ ] Merge SSE updates into local state.
-- [ ] Add loading/error states.
+- [x] Implement REST client functions.
+- [x] Implement `EventSource` subscription.
+- [x] Merge SSE updates into local state.
+- [x] Add loading/error states.
 
 ### Acceptance checklist
 
-- [ ] Client works against mocked JSON fixtures.
-- [ ] SSE handler updates gate count and fire status.
+- [x] Client works against mocked JSON fixtures.
+- [x] SSE handler updates gate count and fire status.
 
 ## T-082 — Build lifecycle board
 
@@ -676,16 +676,16 @@
 
 ### Steps
 
-- [ ] Columns: Scheduled, Running, Human Gate, Done.
-- [ ] Cards show loop id, pattern, cron, latest fire status, next fire if exposed.
-- [ ] Human Gate cards are clickable.
-- [ ] Empty states for no loops/no fires.
+- [x] Columns: Scheduled, Running, Human Gate, Done.
+- [x] Cards show loop id, pattern, cron, latest fire status, next fire if exposed.
+- [x] Human Gate cards are clickable.
+- [x] Empty states for no loops/no fires.
 
 ### Acceptance checklist
 
-- [ ] Board renders loops from API.
-- [ ] Gate cards are visually distinct.
-- [ ] Board updates after SSE event.
+- [x] Board renders loops from API.
+- [x] Gate cards are visually distinct.
+- [x] Board updates after SSE event.
 
 ## T-083 — Build header pending-gates badge
 
@@ -695,14 +695,14 @@
 
 ### Steps
 
-- [ ] Render connection indicator.
-- [ ] Render pending gate count.
-- [ ] Clicking badge opens first/highest-priority gate.
+- [x] Render connection indicator.
+- [x] Render pending gate count.
+- [x] Clicking badge opens first/highest-priority gate.
 
 ### Acceptance checklist
 
-- [ ] Badge count matches `GET /v1/gates`.
-- [ ] Badge updates on `gate.opened` and `gate.resolved` events.
+- [x] Badge count matches `GET /v1/gates`.
+- [x] Badge updates on `gate.opened` and `gate.resolved` events.
 
 ## T-084 — Build gate modal
 
@@ -712,20 +712,20 @@
 
 ### Steps
 
-- [ ] Fetch gate detail.
-- [ ] Render summary, phase, loop/fire metadata.
-- [ ] Render thread ledger from parsed front-matter + Markdown body.
-- [ ] Render decision buttons.
-- [ ] Render note box.
-- [ ] POST decision.
-- [ ] Show optimistic or post-success close behavior.
+- [x] Fetch gate detail.
+- [x] Render summary, phase, loop/fire metadata.
+- [x] Render thread ledger from parsed front-matter + Markdown body.
+- [x] Render decision buttons.
+- [x] Render note box.
+- [x] POST decision.
+- [x] Show optimistic or post-success close behavior.
 
 ### Acceptance checklist
 
-- [ ] Modal renders fixture gate.
-- [ ] Route/reject include note.
-- [ ] Successful decision closes modal and updates badge.
-- [ ] API validation errors display inline.
+- [x] Modal renders fixture gate.
+- [x] Route/reject include note.
+- [x] Successful decision closes modal and updates badge.
+- [x] API validation errors display inline.
 
 ## T-085 — Embed static frontend in Go binary
 
@@ -735,16 +735,16 @@
 
 ### Steps
 
-- [ ] Add `go:embed` for built assets.
-- [ ] Serve `/` and SPA fallback.
-- [ ] Ensure `/v1/*` routes still route to API.
-- [ ] Add make target to build frontend then Go binary.
+- [x] Add `go:embed` for built assets.
+- [x] Serve `/` and SPA fallback.
+- [x] Ensure `/v1/*` routes still route to API.
+- [x] Add make target to build frontend then Go binary.
 
 ### Acceptance checklist
 
-- [ ] `piramid start` serves UI.
-- [ ] Browser refresh on nested route works if routing is used.
-- [ ] API routes are not shadowed by static handler.
+- [x] `piramid start` serves UI.
+- [x] Browser refresh on nested route works if routing is used.
+- [x] API routes are not shadowed by static handler.
 
 ---
 
@@ -758,14 +758,14 @@
 
 ### Steps
 
-- [ ] Add fake executor that writes valid `gate.context.md` to `PIRAMID_GATE_CONTEXT`.
-- [ ] Fake executor exits 42.
-- [ ] Fake verifier should not be called.
+- [x] Add fake executor that writes valid `gate.context.md` to `PIRAMID_GATE_CONTEXT`.
+- [x] Fake executor exits 42.
+- [x] Fake verifier should not be called.
 
 ### Acceptance checklist
 
-- [ ] Test proves gate row is created.
-- [ ] Test proves verifier not called.
+- [x] Test proves gate row is created.
+- [x] Test proves verifier not called.
 
 ## T-091 — Demo definition root
 
@@ -775,14 +775,14 @@
 
 ### Steps
 
-- [ ] Add demo post-merge-cleanup pattern.
-- [ ] Add demo post-merge-cleanup loop with near-term cron or manual trigger path.
-- [ ] Include realistic `human_gates: [unresolved-feedback]`.
+- [x] Add demo post-merge-cleanup pattern.
+- [x] Add demo post-merge-cleanup loop with near-term cron or manual trigger path.
+- [x] Include realistic `human_gates: [unresolved-feedback]`.
 
 ### Acceptance checklist
 
-- [ ] Demo root loads.
-- [ ] Demo loop can be forced to fire in test.
+- [x] Demo root loads.
+- [x] Demo loop can be forced to fire in test.
 
 ## T-092 — End-to-end script/test
 
@@ -791,16 +791,16 @@
 
 ### Steps
 
-- [ ] Start app with demo root and fake runtime.
-- [ ] Force fire or advance fake clock.
-- [ ] Observe gate through API.
-- [ ] POST route decision.
-- [ ] Observe resumed attempt or terminal state depending on fake runtime.
+- [x] Start app with demo root and fake runtime.
+- [x] Force fire or advance fake clock.
+- [x] Observe gate through API.
+- [x] POST route decision.
+- [x] Observe resumed attempt or terminal state depending on fake runtime.
 
 ### Acceptance checklist
 
-- [ ] One command demonstrates cron/fire/gate/decision/resume.
-- [ ] Failure output points to the broken stage.
+- [x] One command demonstrates cron/fire/gate/decision/resume.
+- [x] Failure output points to the broken stage.
 
 ---
 
@@ -814,14 +814,14 @@
 
 ### Steps
 
-- [ ] Explain `Pattern → Loop → Fire → Goal → Tasks`.
-- [ ] Explain definition root.
-- [ ] Explain Phase-1 UI.
-- [ ] Document trusted-network/no-auth assumption.
+- [x] Explain `Pattern → Loop → Fire → Goal → Tasks`.
+- [x] Explain definition root.
+- [x] Explain Phase-1 UI.
+- [x] Document trusted-network/no-auth assumption.
 
 ### Acceptance checklist
 
-- [ ] New user understands what changed from task-first pi-ramid.
+- [x] New user understands what changed from task-first pi-ramid.
 
 ## T-101 — Document gate contract
 
@@ -831,14 +831,14 @@
 
 ### Steps
 
-- [ ] Explain `PIRAMID_GATE_CONTEXT`.
-- [ ] Explain exit 42.
-- [ ] Show full `gate.context.md` example.
-- [ ] Explain decisions and restore behavior.
+- [x] Explain `PIRAMID_GATE_CONTEXT`.
+- [x] Explain exit 42.
+- [x] Show full `gate.context.md` example.
+- [x] Explain decisions and restore behavior.
 
 ### Acceptance checklist
 
-- [ ] Skill author can implement a gating skill from docs alone.
+- [x] Skill author can implement a gating skill from docs alone.
 
 ## T-102 — Document definitions
 
@@ -848,14 +848,14 @@
 
 ### Steps
 
-- [ ] Show pattern YAML example.
-- [ ] Show loop YAML example.
-- [ ] Explain cron semantics.
-- [ ] Explain plain dir vs git repo definition root.
+- [x] Show pattern YAML example.
+- [x] Show loop YAML example.
+- [x] Explain cron semantics.
+- [x] Explain plain dir vs git repo definition root.
 
 ### Acceptance checklist
 
-- [ ] Operator can create a valid loop by hand.
+- [x] Operator can create a valid loop by hand.
 
 ## T-103 — Document API surface
 
@@ -865,13 +865,13 @@
 
 ### Steps
 
-- [ ] Document loop endpoints.
-- [ ] Document gate endpoints.
-- [ ] Document SSE events.
+- [x] Document loop endpoints.
+- [x] Document gate endpoints.
+- [x] Document SSE events.
 
 ### Acceptance checklist
 
-- [ ] Frontend/API consumers can use docs without reading Go code.
+- [x] Frontend/API consumers can use docs without reading Go code.
 
 ---
 
@@ -905,7 +905,7 @@
 # Phase-1 final acceptance checklist
 
 - [x] `go test ./...` passes.
-- [ ] Frontend build passes.
+- [x] Frontend build passes.
 - [x] One configured definition root loads pattern + loop YAML.
 - [ ] Invalid definition changes do not poison active snapshot.
 - [x] Cron creates a Fire and linked Goal.
@@ -915,8 +915,8 @@
 - [x] `GET /v1/gates` returns open gates.
 - [x] `GET /v1/gates/{id}` returns parsed front-matter + Markdown body.
 - [x] `POST /v1/gates/{id}/decision` records the decision and resumes or terminates correctly.
-- [ ] React board renders Scheduled/Running/Human Gate/Done.
-- [ ] Pending-gates badge updates from SSE.
-- [ ] Gate modal renders the thread ledger and can submit a decision.
-- [ ] README/docs explain loop definitions, cron, and gate contract.
-- [ ] Auth remains explicitly documented as out of scope/trusted-network only.
+- [x] React board renders Scheduled/Running/Human Gate/Done.
+- [x] Pending-gates badge updates from SSE.
+- [x] Gate modal renders the thread ledger and can submit a decision.
+- [x] README/docs explain loop definitions, cron, and gate contract.
+- [x] Auth remains explicitly documented as out of scope/trusted-network only.

@@ -1,0 +1,19 @@
+id: pr-maintainer
+name: PR Maintainer
+file: pr-maintainer.md
+goal: Monitor open PRs, address review feedback, and maintain PR hygiene
+cadence: 30m-2h
+risk: low
+tools: [claude-code, github-actions]
+skills: [pr-review, minimal-fix, pr-maintainer]
+state: pr-maintainer-state.md
+phases: [scan-prs, triage-feedback, apply-fixes, verify-ci]
+human_gates: [unresolved-feedback, breaking-change]
+week_one_mode: L1
+token_cost: medium
+cost:
+  tokens_noop: 10000
+  tokens_report: 50000
+  tokens_action: 200000
+  suggested_daily_cap: 500000
+  early_exit_required: false

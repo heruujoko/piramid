@@ -8,3 +8,7 @@
 /.pr-maintainer-loop/
 /.pi/
 /loop-dashboard/pi-session-*.html
+/web/node_modules/
+/web/dist/
+/piramid
+*.tsbuildinfo

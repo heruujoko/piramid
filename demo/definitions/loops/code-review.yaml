@@ -1,0 +1,13 @@
+id: LOOP-CODE-REVIEW
+pattern: code-review
+active: true
+cron: "0 9 * * 1-5"
+autonomy: L2
+trigger: piramid
+goal: |
+  Review all PRs opened since last review cycle. Focus on correctness
+  and security. Flag architectural concerns for human review.
+project_path: /home/pi/piramid
+human_gates: [security-concern, architectural-impact]
+token:
+  daily_cap: 300000
