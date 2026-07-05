@@ -1,4 +1,4 @@
-.PHONY: test e2e build vet verify
+.PHONY: test e2e build vet verify web-build
 
 test:
 	go test ./...
@@ -6,7 +6,10 @@ test:
 e2e:
 	go test ./test/e2e -count=1
 
-build:
+web-build:
+	cd web && npx vite build
+
+build: web-build
 	go build -o bin/piramid ./cmd/piramid
 
 vet:

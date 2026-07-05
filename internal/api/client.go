@@ -159,6 +159,24 @@ func (c *Client) doJSON(
 	return json.NewDecoder(response.Body).Decode(output)
 }
 
+func (c *Client) ListOpenGates(ctx context.Context) ([]domain.GateSummary, error) {
+	var gates []domain.GateSummary
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/gates", nil, &gates); err != nil {
+		return nil, err
+	}
+	return gates, nil
+}
+
+func (c *Client) GetGate(ctx context.Context, gateID string) (domain.GateDetail, error) {
+	var gate domain.GateDetail
+	err := c.doJSON(ctx, http.MethodGet, "/v1/gates/"+gateID, nil, &gate)
+	return gate, err
+}
+
+func (c *Client) ResolveGate(ctx context.Context, gateID string, input domain.GateDecisionInput) error {
+	return c.doJSON(ctx, http.MethodPost, "/v1/gates/"+gateID+"/decision", input, nil)
+}
+
 func (c *Client) StreamEvents(
 	ctx context.Context,
 	lastEventID int64,

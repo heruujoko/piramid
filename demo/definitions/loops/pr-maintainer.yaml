@@ -1,0 +1,13 @@
+id: LOOP-PR-MAINTAINER
+pattern: pr-maintainer
+active: true
+cron: "*/30 * * * *"
+autonomy: L1
+trigger: piramid
+goal: |
+  Monitor open PRs in the piramid repository, triage review feedback,
+  apply approved fixes, and keep PRs moving toward merge.
+project_path: /home/pi/piramid
+human_gates: [unresolved-feedback, breaking-change]
+token:
+  daily_cap: 500000

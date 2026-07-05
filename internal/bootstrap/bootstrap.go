@@ -23,6 +23,7 @@ import (
 	"github.com/heruujoko/piramid/internal/records"
 	runtimepkg "github.com/heruujoko/piramid/internal/runtime"
 	sqlitestore "github.com/heruujoko/piramid/internal/store/sqlite"
+	"github.com/heruujoko/piramid/internal/web"
 )
 
 type Options struct {
@@ -123,10 +124,13 @@ func Start(ctx context.Context, options Options) (*Running, error) {
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(ctx)
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", api.NewServer(application))
+	mux.Handle("/", web.Handler())
 	running := &Running{
 		Address: listener.Addr().String(),
 		cancel:  cancel,
-		server:  &http.Server{Handler: api.NewServer(application), ReadHeaderTimeout: 10 * time.Second},
+		server:  &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second},
 		store:   st,
 	}
 	running.wg.Add(3)
@@ -203,10 +207,6 @@ type definitionsSource struct {
 }
 
 func (s *definitionsSource) Load(ctx context.Context) (definitions.Snapshot, error) {
-	// definitions.LoadRoot performs synchronous filesystem reads (os.Stat,
-	// os.ReadDir) and does not accept a context. Honor cancellation at the
-	// boundary so a shutdown between scheduler ticks short-circuits the load
-	// instead of starting fresh disk I/O.
 	if err := ctx.Err(); err != nil {
 		return definitions.Snapshot{}, err
 	}

@@ -1,0 +1,19 @@
+id: code-review
+name: Code Review
+file: code-review.md
+goal: Review code changes for correctness, security, and style
+cadence: 1h-4h
+risk: medium
+tools: [claude-code]
+skills: [code-review, security-scan, style-check]
+state: code-review-state.md
+phases: [fetch-diff, analyze, report]
+human_gates: [security-concern, architectural-impact]
+week_one_mode: L2
+token_cost: low
+cost:
+  tokens_noop: 5000
+  tokens_report: 30000
+  tokens_action: 100000
+  suggested_daily_cap: 300000
+  early_exit_required: false
