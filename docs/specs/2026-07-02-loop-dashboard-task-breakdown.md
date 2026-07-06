@@ -38,7 +38,7 @@
 - [x] M4 Mid-run gate
 - [x] M5 Resume (T-050 gate resolution, T-051 restore prompt, T-052 fire resume/terminate)
 - [x] M6 API
-- [ ] M7 UI
+- [x] M7 Config
 - [ ] M8 E2E
 - [ ] M9 Docs
 
@@ -613,19 +613,19 @@
 
 ### Steps
 
-- [ ] Choose implementation: fsnotify or polling. Start with polling if dependency minimization matters.
-- [ ] Debounce file changes.
-- [ ] Load full snapshot.
-- [ ] Validate full snapshot.
-- [ ] Swap active snapshot only if valid.
-- [ ] Keep previous good snapshot on invalid update.
-- [ ] Emit/log validation errors.
+- [x] Choose implementation: fsnotify or polling. Start with polling if dependency minimization matters.
+- [x] Debounce file changes.
+- [x] Load full snapshot.
+- [x] Validate full snapshot.
+- [x] Swap active snapshot only if valid.
+- [x] Keep previous good snapshot on invalid update.
+- [x] Emit/log validation errors.
 
 ### Acceptance checklist
 
-- [ ] Valid update swaps snapshot.
-- [ ] Invalid update does not replace previous snapshot.
-- [ ] Partial write simulation does not poison active definitions.
+- [x] Valid update swaps snapshot.
+- [x] Invalid update does not replace previous snapshot.
+- [x] Partial write simulation does not poison active definitions.
 
 ---
 
